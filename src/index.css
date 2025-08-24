@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+/* Custom animations for blob effects */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Blog content styling */
+.blog-content a {
+  color: #22c55e !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  transition: color 0.2s ease !important;
+}
+
+.blog-content a:hover {
+  color: #16a34a !important;
+  text-decoration: underline !important;
+}
+
+.blog-content a:visited {
+  color: #22c55e !important;
+}
+
+.blog-content p {
+  margin-bottom: 1rem;
+}
+
+.blog-content h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 2rem 0 1rem 0;
+}
+
+.blog-content h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.75rem 0;
+}
+
+.blog-content h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem 0;
+}
+
+.blog-content ul, 
+.blog-content ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.blog-content li {
+  margin-bottom: 0.5rem;
+}
+
+.blog-content blockquote {
+  border-left: 4px solid #22c55e;
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  font-style: italic;
+}
+
+/* Light theme styles */
+.light-content h2,
+.light-content h3,
+.light-content h4 {
+  color: #1f2937 !important;
+}
+
+.light-content blockquote {
+  background-color: #f9fafb;
+}
+
+.light-content .arabic {
+  background-color: #f9fafb;
+}
+
+.light-content p {
+  color: #374151;
+}
+
+/* Dark theme styles */
+.dark-content h2,
+.dark-content h3,
+.dark-content h4 {
+  color: #f9fafb !important;
+}
+
+.dark-content blockquote {
+  background-color: #374151;
+}
+
+.dark-content .arabic {
+  background-color: #374151;
+}
+
+.dark-content p {
+  color: #e5e7eb;
+}
+
+.dark-content strong {
+  color: #f9fafb;
+}
+
+.dark-content em {
+  color: #d1d5db;
+}
+
+.blog-content .arabic {
+  font-family: 'Amiri', serif;
+  font-size: 1.1rem;
+  text-align: center;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}

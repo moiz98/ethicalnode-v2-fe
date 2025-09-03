@@ -1,21 +1,180 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, TrendingUp, TrendingDown, X, Info } from "lucide-react";
+import { Search, TrendingUp, X, Info } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+interface HalalScreenerData {
+  _id: string;
+  blockchainName: string;
+  blockchainToken: string;
+  coinGeckoId: string;
+  logoURL?: string;
+  trading: {
+    status: 'Non-Comfortable' | 'Comfortable' | 'Questionable';
+    description: string;
+  };
+  staking: {
+    status: 'Non-Comfortable' | 'Comfortable' | 'Questionable';
+    description: string;
+  };
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CoinGeckoPriceData {
+  [key: string]: {
+    usd: number;
+    usd_market_cap: number;
+    usd_24h_vol: number;
+    usd_24h_change: number;
+  };
+}
 
 const HalalScreener = () => {
   const { isDarkMode } = useTheme();
+  const [screeners, setScreeners] = useState<HalalScreenerData[]>([]);
+  const [priceData, setPriceData] = useState<CoinGeckoPriceData>({});
+  const [loading, setLoading] = useState(true);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [popupInfo, setPopupInfo] = useState<{
     isOpen: boolean;
     type: 'trading' | 'staking' | null;
     status: string;
     blockchain: string;
+    description: string;
   }>({
     isOpen: false,
     type: null,
     status: '',
-    blockchain: ''
+    blockchain: '',
+    description: ''
   });
+
+  // Fetch halal screeners from API
+  useEffect(() => {
+    const fetchScreeners = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('http://localhost:3000/api/halal-screener');
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data?.screeners) {
+            setScreeners(result.data.screeners);
+            // Fetch pricing data after getting screeners
+            await fetchPricingData(result.data.screeners);
+          }
+        } else {
+          console.error('Failed to fetch halal screeners');
+        }
+      } catch (error) {
+        console.error('Error fetching screeners:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchScreeners();
+  }, []);
+
+  // Fetch pricing data from CoinGecko
+  const fetchPricingData = async (screenersData: HalalScreenerData[]) => {
+    try {
+      setPriceLoading(true);
+      
+      // Extract all unique CoinGecko IDs
+      const coinGeckoIds = screenersData
+        .filter(screener => screener.coinGeckoId && screener.isActive)
+        .map(screener => screener.coinGeckoId)
+        .filter((id, index, array) => array.indexOf(id) === index); // Remove duplicates
+      
+      if (coinGeckoIds.length === 0) {
+        setPriceLoading(false);
+        return;
+      }
+
+      // Create the API URL with all IDs
+      const idsParam = coinGeckoIds.join(',');
+      const apiUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`;
+      
+      const response = await fetch(apiUrl);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPriceData(data);
+      } else {
+        console.error('Failed to fetch pricing data from CoinGecko');
+      }
+    } catch (error) {
+      console.error('Error fetching pricing data:', error);
+    } finally {
+      setPriceLoading(false);
+    }
+  };
+
+  // Helper functions for formatting
+  const formatPrice = (price: number) => {
+    if (price >= 1000) {
+      return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+    } else if (price >= 1) {
+      return `$${price.toFixed(2)}`;
+    } else if (price >= 0.01) {
+      return `$${price.toFixed(4)}`;
+    } else {
+      return `$${price.toFixed(6)}`;
+    }
+  };
+
+  const formatMarketCap = (marketCap: number) => {
+    if (marketCap >= 1e12) {
+      return `$${(marketCap / 1e12).toFixed(2)}T`;
+    } else if (marketCap >= 1e9) {
+      return `$${(marketCap / 1e9).toFixed(2)}B`;
+    } else if (marketCap >= 1e6) {
+      return `$${(marketCap / 1e6).toFixed(2)}M`;
+    } else if (marketCap >= 1e3) {
+      return `$${(marketCap / 1e3).toFixed(2)}K`;
+    } else {
+      return `$${marketCap.toFixed(2)}`;
+    }
+  };
+
+  const formatChange = (change: number) => {
+    const formattedChange = Math.abs(change).toFixed(2);
+    return change >= 0 ? `+${formattedChange}%` : `-${formattedChange}%`;
+  };
+
+  // Get price data for a specific screener
+  const getPriceInfo = (coinGeckoId: string) => {
+    const data = priceData[coinGeckoId];
+    if (!data) {
+      return {
+        price: 'N/A',
+        change: 'N/A',
+        marketCap: 'N/A',
+        changeColor: isDarkMode ? 'text-gray-400' : 'text-gray-500'
+      };
+    }
+
+    const changeColor = data.usd_24h_change >= 0 
+      ? 'text-green-500' 
+      : 'text-red-500';
+
+    return {
+      price: formatPrice(data.usd),
+      change: formatChange(data.usd_24h_change),
+      marketCap: formatMarketCap(data.usd_market_cap),
+      changeColor
+    };
+  };
+
+  // Filter screeners based on search term
+  const filteredScreeners = screeners.filter(screener =>
+    screener.blockchainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    screener.blockchainToken.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Compliance descriptions
   const getComplianceDescription = (type: 'trading' | 'staking', status: string, blockchain: string) => {
@@ -35,12 +194,13 @@ const HalalScreener = () => {
     return descriptions[type][status as keyof typeof descriptions.trading] || "No description available.";
   };
 
-  const openPopup = (type: 'trading' | 'staking', status: string, blockchain: string) => {
+  const openPopup = (type: 'trading' | 'staking', status: string, blockchain: string, description?: string) => {
     setPopupInfo({
       isOpen: true,
       type,
       status,
-      blockchain
+      blockchain,
+      description: description || getComplianceDescription(type, status, blockchain)
     });
   };
 
@@ -49,85 +209,10 @@ const HalalScreener = () => {
       isOpen: false,
       type: null,
       status: '',
-      blockchain: ''
+      blockchain: '',
+      description: ''
     });
   };
-
-  // Sample data based on your attached images
-  const cryptoData = [
-    {
-      blockchain: "Cosmos hub",
-      symbol: "ATOM",
-      price: "$4.776116",
-      change24h: "8.15%",
-      isPositive: true,
-      marketCap: "$2,241,479,921.94",
-      apy: "17.18%",
-      trading: "Non-Comfortable",
-      staking: "Non-Comfortable",
-      logo: "🌐"
-    },
-    {
-      blockchain: "Fetch.ai",
-      symbol: "FET",
-      price: "$0.699493",
-      change24h: "5.72%",
-      isPositive: true,
-      marketCap: "$1,841,489,137.88",
-      apy: "6.81%",
-      trading: "Comfortable",
-      staking: "Comfortable",
-      logo: "🤖"
-    },
-    {
-      blockchain: "Medibloc",
-      symbol: "MED",
-      price: "$0.005652",
-      change24h: "3.28%",
-      isPositive: true,
-      marketCap: "$56,729,370.36",
-      apy: "49.83%",
-      trading: "Questionable",
-      staking: "Comfortable",
-      logo: "⚕️"
-    },
-    {
-      blockchain: "Persistence",
-      symbol: "XPRT",
-      price: "$0.035936",
-      change24h: "1.56%",
-      isPositive: true,
-      marketCap: "$8,500,756.85",
-      apy: "23.00%",
-      trading: "Questionable",
-      staking: "Comfortable",
-      logo: "💎"
-    },
-    {
-      blockchain: "Sentinel",
-      symbol: "DVPN",
-      price: "$0.000315",
-      change24h: "7.60%",
-      isPositive: true,
-      marketCap: "$7,202,560.51",
-      apy: "14.52%",
-      trading: "Non-Comfortable",
-      staking: "Non-Comfortable",
-      logo: "🛡️"
-    },
-    {
-      blockchain: "AssetMantle",
-      symbol: "MNTL",
-      price: "$0.000257",
-      change24h: "10.17%",
-      isPositive: true,
-      marketCap: "$591,192.28",
-      apy: "70.17%",
-      trading: "Questionable",
-      staking: "Comfortable",
-      logo: "🏛️"
-    }
-  ];
 
   const getComplianceColor = (status: string) => {
     switch (status) {
@@ -207,7 +292,9 @@ const HalalScreener = () => {
                 }`} />
                 <input
                   type="text"
-                  placeholder="Search chain..."
+                  placeholder="Search blockchain or token..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
                     isDarkMode 
                       ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" 
@@ -215,9 +302,9 @@ const HalalScreener = () => {
                   } focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-colors`}
                 />
               </div>
-              <div className={`text-sm font-medium ${
+              <div className={`text-sm font-medium mr-30 ${
                 isDarkMode ? "text-gray-300" : "text-gray-700"
-              } pr-20`}>
+              }`}>
                 Shariah Compliance
               </div>
             </div>
@@ -250,11 +337,6 @@ const HalalScreener = () => {
                   }`}>
                     Market Cap
                   </th>
-                  <th className={`px-6 py-4 text-left text-sm font-medium ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}>
-                    APY
-                  </th>
                   <th className="px-6 py-4">
                     <div className="grid grid-cols-2 gap-2 text-sm font-medium">
                       <span className={`text-center ${
@@ -272,102 +354,153 @@ const HalalScreener = () => {
                 </tr>
               </thead>
               <tbody>
-                {cryptoData.map((crypto, index) => (
-                  <motion.tr
-                    key={crypto.symbol}
-                    className={`border-b ${
-                      isDarkMode ? "border-gray-700" : "border-gray-200"
-                    } hover:${
-                      isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
-                    } transition-colors`}
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
-                    viewport={{ once: true }}
-                  >
-                    {/* Blockchain */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-full ${
-                          isDarkMode ? "bg-gray-700" : "bg-gray-100"
-                        } flex items-center justify-center text-sm`}>
-                          {crypto.logo}
-                        </div>
-                        <div>
-                          <div className={`font-medium ${
-                            isDarkMode ? "text-white" : "text-gray-900"
-                          }`}>
-                            {crypto.blockchain}
-                          </div>
-                          <div className={`text-sm ${
-                            isDarkMode ? "text-gray-400" : "text-gray-500"
-                          }`}>
-                            {crypto.symbol}
-                          </div>
-                        </div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center">
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+                        <span className={`ml-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          Loading screeners...
+                        </span>
                       </div>
                     </td>
+                  </tr>
+                ) : filteredScreeners.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center">
+                      <span className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {searchTerm ? 'No screeners found matching your search.' : 'No halal screeners available.'}
+                      </span>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredScreeners.map((screener, index) => {
+                    const priceInfo = getPriceInfo(screener.coinGeckoId);
+                    
+                    return (
+                    <motion.tr
+                      key={screener._id}
+                      className={`border-b ${
+                        isDarkMode ? "border-gray-700" : "border-gray-200"
+                      } hover:${
+                        isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
+                      } transition-colors`}
+                      initial={{ opacity: 0, x: -20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.1 }}
+                      viewport={{ once: true }}
+                    >
+                      {/* Blockchain */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-3">
+                          {screener.logoURL ? (
+                            <img 
+                              src={screener.logoURL} 
+                              alt={`${screener.blockchainName} logo`}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                // Fallback to text icon if image fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const fallback = target.nextElementSibling as HTMLElement;
+                                if (fallback) {
+                                  fallback.classList.remove('hidden');
+                                }
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full ${
+                            isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                          } flex items-center justify-center text-sm font-bold ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          } ${screener.logoURL ? 'hidden' : ''}`}>
+                            {screener.blockchainToken.slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className={`font-medium ${
+                              isDarkMode ? "text-white" : "text-gray-900"
+                            }`}>
+                              {screener.blockchainName}
+                            </div>
+                            <div className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-500"
+                            }`}>
+                              {screener.coinGeckoId}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
 
                     {/* Price */}
                     <td className={`px-6 py-4 font-medium ${
                       isDarkMode ? "text-white" : "text-gray-900"
                     }`}>
-                      {crypto.price}
+                      {priceLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500"></div>
+                          <span className="text-sm">Loading...</span>
+                        </div>
+                      ) : (
+                        priceInfo.price
+                      )}
                     </td>
 
                     {/* 24h Change */}
                     <td className="px-6 py-4">
-                      <div className={`flex items-center space-x-1 ${
-                        crypto.isPositive ? "text-green-500" : "text-red-500"
-                      }`}>
-                        {crypto.isPositive ? (
+                      {priceLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500"></div>
+                          <span className="text-sm">Loading...</span>
+                        </div>
+                      ) : (
+                        <div className={`flex items-center space-x-1 ${priceInfo.changeColor}`}>
                           <TrendingUp className="w-4 h-4" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4" />
-                        )}
-                        <span className="font-medium">{crypto.change24h}</span>
-                      </div>
+                          <span className="text-sm font-medium">{priceInfo.change}</span>
+                        </div>
+                      )}
                     </td>
 
                     {/* Market Cap */}
                     <td className={`px-6 py-4 ${
                       isDarkMode ? "text-gray-300" : "text-gray-600"
                     }`}>
-                      {crypto.marketCap}
-                    </td>
-
-                    {/* APY */}
-                    <td className={`px-6 py-4 font-medium ${
-                      isDarkMode ? "text-teal-400" : "text-teal-600"
-                    }`}>
-                      {crypto.apy}
+                      {priceLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500"></div>
+                          <span className="text-sm">Loading...</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm font-medium">{priceInfo.marketCap}</span>
+                      )}
                     </td>
 
                     {/* Shariah Compliance */}
                     <td className="px-6 py-4">
                       <div className="grid grid-cols-2 gap-2">
                         <button 
-                          onClick={() => openPopup('trading', crypto.trading, crypto.blockchain)}
+                          onClick={() => openPopup('trading', screener.trading.status, screener.blockchainName, screener.trading.description)}
                           className={`text-xs px-2 py-1 rounded-full text-center cursor-pointer hover:scale-105 transition-transform flex items-center justify-center gap-1 ${
-                            getComplianceColor(crypto.trading)
-                          } ${getComplianceBg(crypto.trading)}`}
+                            getComplianceColor(screener.trading.status)
+                          } ${getComplianceBg(screener.trading.status)}`}
                         >
-                          {crypto.trading}
+                          {screener.trading.status}
                           <Info className="w-3 h-3" />
                         </button>
                         <button 
-                          onClick={() => openPopup('staking', crypto.staking, crypto.blockchain)}
+                          onClick={() => openPopup('staking', screener.staking.status, screener.blockchainName, screener.staking.description)}
                           className={`text-xs px-2 py-1 rounded-full text-center cursor-pointer hover:scale-105 transition-transform flex items-center justify-center gap-1 ${
-                            getComplianceColor(crypto.staking)
-                          } ${getComplianceBg(crypto.staking)}`}
+                            getComplianceColor(screener.staking.status)
+                          } ${getComplianceBg(screener.staking.status)}`}
                         >
-                          {crypto.staking}
+                          {screener.staking.status}
                           <Info className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
                   </motion.tr>
-                ))}
+                  );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -375,22 +508,29 @@ const HalalScreener = () => {
           {/* Pagination */}
           <div className={`px-6 py-4 border-t ${
             isDarkMode ? "border-gray-700 bg-gray-800/30" : "border-gray-200 bg-gray-50"
-          } flex justify-center space-x-2`}>
-            <button className={`w-8 h-8 rounded-lg ${
-              isDarkMode ? "bg-teal-600 text-white" : "bg-teal-500 text-white"
-            } flex items-center justify-center text-sm font-medium`}>
-              1
-            </button>
-            <button className={`w-8 h-8 rounded-lg ${
-              isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-            } flex items-center justify-center text-sm font-medium transition-colors`}>
-              2
-            </button>
-            <button className={`w-8 h-8 rounded-lg ${
-              isDarkMode ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-            } flex items-center justify-center text-sm font-medium transition-colors`}>
-              3
-            </button>
+          } flex flex-col sm:flex-row items-center justify-between gap-4`}>
+            <div className={`text-sm ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              <div>
+                Showing {filteredScreeners.length} of {screeners.length} screeners
+              </div>
+              {searchTerm && (
+                <div className={`text-xs mt-1 ${
+                  isDarkMode ? "text-gray-500" : "text-gray-500"
+                }`}>
+                  Filtered by: "{searchTerm}"
+                </div>
+              )}
+            </div>
+            
+            {screeners.length > 0 && (
+              <div className={`text-sm ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>
+                {screeners.filter(s => s.isActive).length} active • {screeners.filter(s => !s.isActive).length} inactive
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -449,11 +589,7 @@ const HalalScreener = () => {
                   <p className={`text-sm leading-relaxed ${
                     isDarkMode ? "text-gray-300" : "text-gray-600"
                   }`}>
-                    {popupInfo.type && getComplianceDescription(
-                      popupInfo.type, 
-                      popupInfo.status, 
-                      popupInfo.blockchain
-                    )}
+                    {popupInfo.description}
                   </p>
 
                   {/* Status Badge */}

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Globe, Moon, Scale, Shield, TrendingUp, Users, BookOpen, Award } from "lucide-react";
+import { Globe, Moon, Scale, Shield, TrendingUp, Users, BookOpen, Award } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
 
 const HeroSection = () => {
@@ -327,16 +327,7 @@ const HeroSection = () => {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.6 }}
-              >
-                <motion.button
-                  className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-8 py-4 rounded-lg transition-colors duration-200 shadow-lg hover:shadow-xl"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  Start Staking Now
-                  <ArrowRight className="w-5 h-5" />
-                </motion.button>
-                
+              > 
                 <motion.button
                   onClick={() => {
                     const element = document.getElementById("halal-screener");

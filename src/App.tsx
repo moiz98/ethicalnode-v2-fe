@@ -8,6 +8,20 @@ import Home from './pages/landing/Home';
 import Blogs from './pages/landing/Blogs';
 import BlogDetail from './pages/landing/BlogDetail';
 
+// Admin Dashboard Pages
+import AdminDashboardLayout from './layouts/AdminDashboardLayout';
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminLogin from './pages/admin/Login';
+import AdminManagement from './pages/admin/AdminManagement';
+import Activities from './pages/admin/Activities';
+import HalalScreenerManagement from './pages/admin/HalalScreenerManagement';
+import ValidatorManagement from './pages/admin/ValidatorManagement';
+import { AdminAuthProvider } from './contexts/AdminAuthContext';
+
+// Investor Dashboard Pages
+import InvestorDashboardLayout from './layouts/InvestorDashboardLayout';
+import InvestorPortfolio from './pages/investor/Portfolio';
+
 function Loader() {
   return (
     <div style={{
@@ -88,19 +102,26 @@ function App() {
           <Route path='*' element={<Home />} />
         </Route>
 
-        {/* Admin Dashboard */}
-        {/* <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="/admin/users" element={<UserManagement />} />
-          <Route path="/admin/settings" element={<AdminSettings />} />
-        </Route> */}
+        {/* Admin Dashboard - Wrapped with AdminAuthProvider */}
+        <Route path="/admin/*" element={
+          <AdminAuthProvider>
+            <Routes>
+              <Route path="login" element={<AdminLogin />} />
+              <Route element={<AdminDashboardLayout />}>
+                <Route index element={<AdminDashboard />} />
+                <Route path="management" element={<AdminManagement />} />
+                <Route path="activities" element={<Activities />} />
+                <Route path="halal-screener" element={<HalalScreenerManagement />} />
+                <Route path="validators" element={<ValidatorManagement />} />
+              </Route>
+            </Routes>
+          </AdminAuthProvider>
+        } />
 
         {/* Investor Dashboard */}
-        {/* <Route path="/investor" element={<InvestorLayout />}>
-          <Route index element={<InvestorDashboard />} />
-          <Route path="/investor/portfolio" element={<InvestorPortfolio />} />
-          <Route path="/investor/reports" element={<InvestorReports />} />
-        </Route> */}
+        <Route element={<InvestorDashboardLayout />}>
+          <Route path="/investor" element={<InvestorPortfolio />} />
+        </Route>
 
       </Routes>
     </Suspense>

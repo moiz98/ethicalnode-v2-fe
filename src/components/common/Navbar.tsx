@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ChevronRight, Sun, Moon } from "lucide-react";
+import { Menu, X, ChevronRight, Sun, Moon, Wallet } from "lucide-react";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useWallet } from "../../contexts/WalletContext";
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -10,6 +11,7 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { isConnected, walletAddress, connectWallet, isLoading } = useWallet();
 
   // Animation variants
   const navbarVariants = {
@@ -85,6 +87,16 @@ const Navbar = () => {
   }, [location.pathname, location.hash]);
 
   // Remove handleNavClick, not needed for routing
+
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+      // Navigate to investor dashboard after successful connection
+      navigate('/investor');
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
+    }
+  };
 
   const handleNavClick = (href: string) => {
     // Close mobile menu if open
@@ -212,30 +224,35 @@ const Navbar = () => {
                 )}
               </motion.button>
 
-              {/* Sign In Button */}
-              <motion.button
-                className={`px-4 py-2 text-sm font-medium transition-colors duration-200 ${
-                  isDarkMode 
-                    ? "text-gray-300 hover:text-white" 
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Sign In
-              </motion.button>
-
-              {/* Start Staking Button */}
-              <motion.button
-                className="px-6 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors duration-200"
-                whileHover={{ 
-                  scale: 1.05,
-                  boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Start Staking
-              </motion.button>
+              {/* Connect Wallet Button */}
+              {isConnected ? (
+                <motion.button
+                  onClick={() => navigate('/investor')}
+                  className="flex items-center px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors duration-200"
+                  whileHover={{ 
+                    scale: 1.05,
+                    boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
+                  }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
+                </motion.button>
+              ) : (
+                <motion.button
+                  onClick={handleConnectWallet}
+                  disabled={isLoading}
+                  className="flex items-center px-6 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  whileHover={{ 
+                    scale: isLoading ? 1 : 1.05,
+                    boxShadow: isLoading ? "none" : "0 4px 12px rgba(20, 184, 166, 0.3)"
+                  }}
+                  whileTap={{ scale: isLoading ? 1 : 0.95 }}
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                </motion.button>
+              )}
             </div>
 
             {/* Mobile Menu Button */}
@@ -386,30 +403,41 @@ const Navbar = () => {
                     )}
                   </motion.button>
 
-                  {/* Sign In Button */}
-                  <motion.button
-                    className={`w-full py-3 text-lg font-medium rounded-xl transition-colors duration-200 ${
-                      isDarkMode 
-                        ? "text-gray-300 hover:text-white border border-gray-600 hover:bg-gray-800" 
-                        : "text-gray-600 hover:text-gray-900 border border-gray-300 hover:bg-gray-50"
-                    }`}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    Sign In
-                  </motion.button>
-
-                  {/* Start Staking Button */}
-                  <motion.button
-                    className="w-full py-3 text-lg font-medium rounded-xl bg-teal-500 text-white hover:bg-teal-600 transition-colors duration-200"
-                    whileHover={{ 
-                      scale: 1.02,
-                      boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
-                    }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    Start Staking
-                  </motion.button>
+                  {/* Connect Wallet Button */}
+                  {isConnected ? (
+                    <motion.button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        navigate('/investor');
+                      }}
+                      className="w-full flex items-center justify-center py-3 text-lg font-medium rounded-xl bg-teal-500 text-white hover:bg-teal-600 transition-colors duration-200"
+                      whileHover={{ 
+                        scale: 1.02,
+                        boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
+                      }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <Wallet className="w-5 h-5 mr-2" />
+                      {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
+                    </motion.button>
+                  ) : (
+                    <motion.button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        handleConnectWallet();
+                      }}
+                      disabled={isLoading}
+                      className="w-full flex items-center justify-center py-3 text-lg font-medium rounded-xl bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                      whileHover={{ 
+                        scale: isLoading ? 1 : 1.02,
+                        boxShadow: isLoading ? "none" : "0 4px 12px rgba(20, 184, 166, 0.3)"
+                      }}
+                      whileTap={{ scale: isLoading ? 1 : 0.98 }}
+                    >
+                      <Wallet className="w-5 h-5 mr-2" />
+                      {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                    </motion.button>
+                  )}
                 </div>
               </motion.div>
             </motion.div>

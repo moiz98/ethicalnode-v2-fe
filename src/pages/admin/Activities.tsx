@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
+import adminApiClient from '../../utils/adminApiClient';
 
 interface Activity {
   _id: string;
@@ -44,66 +45,69 @@ const ActivitiesPage: React.FC = () => {
   // Fetch all admins for filter dropdown
   const fetchAdmins = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/admin-management/admins', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.admins) {
-          setAdmins(result.data.admins);
-        }
+      console.log('👥 fetchAdmins called:', { timestamp: new Date().toISOString() });
+      
+      const result = await adminApiClient.get('/admin-management/admins');
+      
+      if (result.success && result.data?.admins) {
+        setAdmins(result.data.admins);
       }
-    } catch (err) {
-      console.error('Error fetching admins:', err);
+    } catch (err: any) {
+      // Don't log error if request was aborted
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching admins:', err);
+      }
     }
   };
 
   // Fetch activities from API
   const fetchActivities = async (page: number = 1, adminWallet?: string) => {
     try {
+      console.log('🔄 fetchActivities called:', { page, adminWallet, timestamp: new Date().toISOString() });
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('adminToken');
       
-      let url = `http://localhost:3000/api/admin-management/activities?page=${page}&limit=20`;
+      let endpoint = `/admin-management/activities?page=${page}&limit=20`;
       if (adminWallet) {
-        url = `http://localhost:3000/api/admin-management/activities/${adminWallet}?page=${page}&limit=20`;
+        endpoint = `/admin-management/activities/${adminWallet}?page=${page}&limit=20`;
       }
 
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const result = await adminApiClient.get(endpoint);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.activities) {
-          setActivities(result.data.activities);
-          setPagination(result.data.pagination);
-        } else {
-          setError('No activities found');
-        }
+      if (result.success && result.data?.activities) {
+        setActivities(result.data.activities);
+        setPagination(result.data.pagination);
       } else {
-        throw new Error(`Failed to fetch activities: ${response.status}`);
+        setError('No activities found');
       }
-    } catch (err) {
-      console.error('Error fetching activities:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load activities');
+    } catch (err: any) {
+      // Don't show error if request was aborted
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching activities:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load activities');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAdmins();
-    fetchActivities(1);
+    let isMounted = true;
+    const abortController = new AbortController();
+    
+    const loadInitialData = async () => {
+      if (isMounted) {
+        await fetchAdmins();
+        await fetchActivities(1);
+      }
+    };
+    
+    loadInitialData();
+    
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, []);
 
   // Handle admin filter change
@@ -160,11 +164,6 @@ const ActivitiesPage: React.FC = () => {
       setSearchLoading(false);
     }
   }, [searchQuery]);
-
-  useEffect(() => {
-    fetchAdmins();
-    fetchActivities(1);
-  }, []);
 
   // Client-side filtered activities for display
   const filteredActivities = activities.filter(activity => {

@@ -1,17 +1,25 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ChevronRight, Sun, Moon, Wallet } from "lucide-react";
+import { Menu, X, ChevronRight, Sun, Moon, Wallet, ChevronDown, LogOut } from "lucide-react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useWallet } from "../../contexts/WalletContext";
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
-  const { isConnected, walletAddress, connectWallet, isLoading } = useWallet();
+  const { 
+    isConnected, 
+    isLoading, 
+    keplrAddress, 
+    namadaAddress, 
+    connectWallets,
+    disconnectWallet 
+  } = useWallet();
 
   // Animation variants
   const navbarVariants = {
@@ -71,6 +79,18 @@ const Navbar = () => {
     }
   }, [mobileMenuOpen]);
 
+  // Close wallet dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (walletDropdownOpen && !(event.target as Element).closest('.wallet-dropdown')) {
+        setWalletDropdownOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [walletDropdownOpen]);
+
   // Handle scrolling to section when navigating with hash
   useEffect(() => {
     if (location.pathname === '/' && location.hash) {
@@ -86,16 +106,40 @@ const Navbar = () => {
     }
   }, [location.pathname, location.hash]);
 
+  // Auto-redirect to dashboard when wallet connects
+  useEffect(() => {
+    if (isConnected && location.pathname === '/') {
+      navigate('/investor/portfolio');
+    }
+  }, [isConnected, navigate, location.pathname]);
+
+  // Get primary wallet address (prioritize Keplr)
+  const walletAddress = keplrAddress || namadaAddress;
+
   // Remove handleNavClick, not needed for routing
 
   const handleConnectWallet = async () => {
+    console.log('🎯 NAVBAR: Connect wallet button clicked');
+    console.log('🎯 NAVBAR: Current isLoading state:', isLoading);
+    console.log('🎯 NAVBAR: Current isConnected state:', isConnected);
+    
     try {
-      await connectWallet();
-      // Navigate to investor dashboard after successful connection
-      navigate('/investor');
+      console.log('🎯 NAVBAR: Calling connectWallets()...');
+      await connectWallets(); // Wait for the entire connection process including backend
+      console.log('🎯 NAVBAR: connectWallets() completed successfully (including backend)');
+      
+      // Navigate to investor dashboard only after everything is complete
+      console.log('🎯 NAVBAR: All processes complete, now navigating to /investor...');
+      navigate('/investor/portfolio');
     } catch (error) {
-      console.error('Failed to connect wallet:', error);
+      console.error('🎯 NAVBAR: Failed to connect wallet:', error);
+      // Don't navigate if there was an error
     }
+  };
+
+  const handleDisconnectWallet = () => {
+    disconnectWallet();
+    navigate('/');
   };
 
   const handleNavClick = (href: string) => {
@@ -226,18 +270,58 @@ const Navbar = () => {
 
               {/* Connect Wallet Button */}
               {isConnected ? (
-                <motion.button
-                  onClick={() => navigate('/investor')}
-                  className="flex items-center px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors duration-200"
-                  whileHover={{ 
-                    scale: 1.05,
-                    boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Wallet className="w-4 h-4 mr-2" />
-                  {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
-                </motion.button>
+                <div className="relative wallet-dropdown">
+                  <motion.button
+                    onClick={() => setWalletDropdownOpen(!walletDropdownOpen)}
+                    className="flex items-center px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors duration-200"
+                    whileHover={{ 
+                      scale: 1.05,
+                      boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </motion.button>
+                  
+                  <AnimatePresence>
+                    {walletDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className={`absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-50 ${
+                          isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"
+                        }`}
+                      >
+                        <button
+                          onClick={() => {
+                            setWalletDropdownOpen(false);
+                            navigate('/investor/portfolio');
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm rounded-t-lg transition-colors duration-200 ${
+                            isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          Go to Dashboard
+                        </button>
+                        <button
+                          onClick={() => {
+                            setWalletDropdownOpen(false);
+                            handleDisconnectWallet();
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm rounded-b-lg transition-colors duration-200 flex items-center ${
+                            isDarkMode ? "text-red-400 hover:bg-gray-700" : "text-red-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          <LogOut className="w-4 h-4 mr-2" />
+                          Disconnect
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               ) : (
                 <motion.button
                   onClick={handleConnectWallet}
@@ -405,21 +489,39 @@ const Navbar = () => {
 
                   {/* Connect Wallet Button */}
                   {isConnected ? (
-                    <motion.button
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        navigate('/investor');
-                      }}
-                      className="w-full flex items-center justify-center py-3 text-lg font-medium rounded-xl bg-teal-500 text-white hover:bg-teal-600 transition-colors duration-200"
-                      whileHover={{ 
-                        scale: 1.02,
-                        boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Wallet className="w-5 h-5 mr-2" />
-                      {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
-                    </motion.button>
+                    <div className="space-y-2">
+                      <motion.button
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          navigate('/investor/portfolio');
+                        }}
+                        className="w-full flex items-center justify-center py-3 text-lg font-medium rounded-xl bg-teal-500 text-white hover:bg-teal-600 transition-colors duration-200"
+                        whileHover={{ 
+                          scale: 1.02,
+                          boxShadow: "0 4px 12px rgba(20, 184, 166, 0.3)"
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Wallet className="w-5 h-5 mr-2" />
+                        {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Dashboard'}
+                      </motion.button>
+                      <motion.button
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          handleDisconnectWallet();
+                        }}
+                        className={`w-full flex items-center justify-center py-3 text-lg font-medium rounded-xl transition-colors duration-200 ${
+                          isDarkMode 
+                            ? "text-red-400 bg-gray-800 hover:bg-gray-700" 
+                            : "text-red-600 bg-gray-100 hover:bg-gray-200"
+                        }`}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <LogOut className="w-5 h-5 mr-2" />
+                        Disconnect
+                      </motion.button>
+                    </div>
                   ) : (
                     <motion.button
                       onClick={() => {

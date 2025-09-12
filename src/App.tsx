@@ -16,11 +16,21 @@ import AdminManagement from './pages/admin/AdminManagement';
 import Activities from './pages/admin/Activities';
 import HalalScreenerManagement from './pages/admin/HalalScreenerManagement';
 import ValidatorManagement from './pages/admin/ValidatorManagement';
+import InvestorManagement from './pages/admin/InvestorManagement';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import AdminToastIntegration from './components/AdminToastIntegration';
 
 // Investor Dashboard Pages
 import InvestorDashboardLayout from './layouts/InvestorDashboardLayout';
 import InvestorPortfolio from './pages/investor/Portfolio';
+import HalalScreener from './pages/investor/HalalScreener';
+import Validators from './pages/investor/Validators';
+import Transactions from './pages/investor/Transactions';
+import ReferralBonus from './pages/investor/ReferralBonus';
+import Settings from './pages/investor/Settings';
+import { ToastProvider as InvestorToastProvider } from './components/common/ToastProvider';
+import ProtectedRoute from './components/common/ProtectedRoute';
 
 function Loader() {
   return (
@@ -93,37 +103,56 @@ function Loader() {
 function App() {
   return (
     <Suspense fallback={<Loader />}>
-      <Routes>
-        {/* Landing Pages */}
-        <Route element={<PublicLayout />} >
-          <Route index element={<Home />} />
-          <Route path="/blogs" element={<Blogs />} />
-          <Route path="/blog/:slug" element={<BlogDetail />} />
-          <Route path='*' element={<Home />} />
-        </Route>
+      <ToastProvider>
+        <Routes>
+          {/* Landing Pages */}
+          <Route element={<PublicLayout />} >
+            <Route index element={<Home />} />
+            <Route path="/blogs" element={<Blogs />} />
+            <Route path="/blog/:slug" element={<BlogDetail />} />
+            <Route path='*' element={<Home />} />
+          </Route>
 
-        {/* Admin Dashboard - Wrapped with AdminAuthProvider */}
-        <Route path="/admin/*" element={
-          <AdminAuthProvider>
-            <Routes>
-              <Route path="login" element={<AdminLogin />} />
-              <Route element={<AdminDashboardLayout />}>
-                <Route index element={<AdminDashboard />} />
-                <Route path="management" element={<AdminManagement />} />
-                <Route path="activities" element={<Activities />} />
-                <Route path="halal-screener" element={<HalalScreenerManagement />} />
-                <Route path="validators" element={<ValidatorManagement />} />
-              </Route>
-            </Routes>
-          </AdminAuthProvider>
-        } />
+          {/* Admin Dashboard - Wrapped with AdminAuthProvider */}
+          <Route path="/admin/*" element={
+            <AdminAuthProvider>
+              <AdminToastIntegration>
+                <Routes>
+                  <Route path="login" element={<AdminLogin />} />
+                  <Route element={<AdminDashboardLayout />}>
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="management" element={<AdminManagement />} />
+                    <Route path="investors" element={<InvestorManagement />} />
+                    <Route path="activities" element={<Activities />} />
+                    <Route path="halal-screener" element={<HalalScreenerManagement />} />
+                    <Route path="validators" element={<ValidatorManagement />} />
+                  </Route>
+                </Routes>
+              </AdminToastIntegration>
+            </AdminAuthProvider>
+          } />
 
-        {/* Investor Dashboard */}
-        <Route element={<InvestorDashboardLayout />}>
-          <Route path="/investor" element={<InvestorPortfolio />} />
-        </Route>
+          {/* Investor Dashboard */}
+          <Route path="/investor/*" element={
+            <ProtectedRoute>
+              <InvestorToastProvider>
+                <Routes>
+                  <Route element={<InvestorDashboardLayout />}>
+                    <Route path="portfolio" element={<InvestorPortfolio />} />
+                    <Route path="halal-screener" element={<HalalScreener />} />
+                    <Route path="validators" element={<Validators />} />
+                    <Route path="transactions" element={<Transactions />} />
+                    <Route path="referral-bonus" element={<ReferralBonus />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route index element={<InvestorPortfolio />} />
+                  </Route>
+                </Routes>
+              </InvestorToastProvider>
+            </ProtectedRoute>
+          } />
 
-      </Routes>
+        </Routes>
+      </ToastProvider>
     </Suspense>
   );
 }

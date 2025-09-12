@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAdminApi } from '../../hooks/useAdminApi';
 import { chains as cosmosChains } from 'chain-registry';
-import { calculateValidatorAPR, calculateAPRWithPresets, getSimpleAPR, getStakingDenom } from '../../utils/aprCalculator';
 
 interface ChainData {
   chainId: string;
@@ -40,6 +40,7 @@ interface ValidatorRecord {
   _id: string;
   chainId: string;
   chainName: string;
+  prettyName: string;
   validatorAddress: string;
   defaultReferralReward: number;
   isActive: boolean;
@@ -47,36 +48,23 @@ interface ValidatorRecord {
   updatedBy: string;
   createdAt: string;
   updatedAt: string;
+  // Validator data from backend API
+  validatorName: string;
+  validatorCommission: number;
+  validatorAPR: number;
+  validatorPower: number;
+  validatorUnbondingPeriod: string;
   // Chain data fetched dynamically
-  validatorInfo?: {
-    moniker: string;
-    commission: {
-      rate: number;
-    };
-    apy: number;
-    votingPower: string;
-    status: string;
-    unbondingTime: string;
-  };
   chainData?: {
     networkType: string;
   };
 }
 
-// Extend window interface for wallet types
-declare global {
-  interface Window {
-    namada?: {
-      connect: () => Promise<void>;
-      isConnected: () => Promise<boolean>;
-      accounts: () => Promise<any[]>;
-      disconnect: () => Promise<void>;
-    };
-  }
-}
+// Note: Window interface extensions are defined in vite-env.d.ts
 
 const ValidatorManagement: React.FC = () => {
   const { isDarkMode } = useTheme();
+  const adminApi = useAdminApi();
   const [chains, setChains] = useState<ChainData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -168,16 +156,21 @@ const ValidatorManagement: React.FC = () => {
         return;
       }
 
-      // For Namada chains, try to connect directly
+      // For Namada chains, try to access accounts
       if (chain.chainName === 'namada' || chain.chainId.includes('namada')) {
         try {
-          // Connect to Namada wallet
-          await window.namada.connect();
-          setCopyToast(`✅ Connected to Namada Keychain for ${chain.prettyName}!`);
-          setTimeout(() => setCopyToast(null), 3000);
+          // Check if Namada wallet is accessible by getting accounts
+          const accounts = await window.namada.accounts();
+          if (accounts && accounts.length > 0) {
+            setCopyToast(`✅ Namada Keychain accessible for ${chain.prettyName}! Found ${accounts.length} account(s).`);
+            setTimeout(() => setCopyToast(null), 3000);
+          } else {
+            setCopyToast(`⚠️ Namada Keychain found but no accounts available. Please set up your Namada wallet first.`);
+            setTimeout(() => setCopyToast(null), 4000);
+          }
         } catch (err) {
-          console.error('Error connecting to Namada:', err);
-          setCopyToast(`❌ Failed to connect to Namada Keychain: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          console.error('Error accessing Namada accounts:', err);
+          setCopyToast(`❌ Failed to access Namada Keychain: ${err instanceof Error ? err.message : 'Please unlock your Namada wallet'}`);
           setTimeout(() => setCopyToast(null), 5000);
         }
       } else {
@@ -313,7 +306,7 @@ const ValidatorManagement: React.FC = () => {
     setShowEnableModal(true);
   };
 
-  // Search for validator information
+  // Search for validator information using the new backend endpoint
   const searchValidator = async (address: string, chain: ChainData) => {
     if (!address || address.length < 10) {
       setValidatorData(null);
@@ -345,165 +338,45 @@ const ValidatorManagement: React.FC = () => {
     setValidatorError(null);
 
     try {
-      if (isNamada) {
-        // For Namada chains, create validator data based on known Namada validators
-        // In a real implementation, you would call Namada's specific API endpoints
+      // Use the new backend endpoint to get validator information
+      const result = await adminApi.post('/admin/validatorinfo', {
+        chainId: chain.chainId,
+        validatorAddress: address
+      });
+
+      if (result.success && result.data) {
+        const validatorInfo = result.data;
         
-        let validatorInfo;
+        // Convert commission from decimal to percentage (e.g., "0.100000000000000000" -> "10.00")
+        const commissionDecimal = parseFloat(validatorInfo.validatorCommission || '0');
+        const commissionPercentage = (commissionDecimal * 100).toFixed(2);
         
-        // Check for known Namada validators
-        if (address === 'tnam1q9n3ncfxevwgs8f2vna2lnw7kz567jrutgw57xqs') {
-          // EthicalNode validator data from app.namada.cc
-          validatorInfo = {
-            moniker: 'EthicalNode',
-            commission: '10.00',
-            apy: 10.53,
-            votingPowerPercentage: '0.04',
-            votingPower: '0.04',
-            unbondingTime: '14 days',
-            details: 'EthicalNode - Namada network validator',
-            rank: 2,
-          };
-        } else {
-          // Default data for other Namada validators
-          validatorInfo = {
-            moniker: `Namada Validator ${address.slice(-8)}`,
-            commission: '5.00',
-            apy: 8.5, // Realistic Namada APR
-            votingPowerPercentage: (Math.random() * 5).toFixed(2),
-            votingPower: (Math.random() * 5).toFixed(2),
-            unbondingTime: '21 epochs',
-            details: 'Namada network validator',
-            rank: Math.floor(Math.random() * 50) + 1,
-          };
-        }
-        
+        // Format validator data to match the expected interface
         const formattedValidator: ValidatorData = {
           operatorAddress: address,
-          moniker: validatorInfo.moniker,
+          moniker: validatorInfo.validatorName || 'Unknown Validator',
           identity: '',
           website: '',
-          details: validatorInfo.details,
+          details: '',
           commission: {
-            rate: validatorInfo.commission,
+            rate: commissionPercentage,
             maxRate: '20.00',
             maxChangeRate: '2.00',
           },
-          votingPower: validatorInfo.votingPower, // Display as percentage for Namada
-          tokens: '0', // Not applicable for Namada display
-          delegatorShares: '0', // Not applicable for Namada display
-          unbondingTime: validatorInfo.unbondingTime,
+          votingPower: validatorInfo.validatorPower?.toString(),
+          tokens: '0',
+          delegatorShares: '0',
+          unbondingTime: validatorInfo.validatorUnbondingPeriod,
           jailed: false,
           status: 'BOND_STATUS_BONDED',
-          apy: validatorInfo.apy,
-          rank: validatorInfo.rank,
+          apy: validatorInfo.validatorAPR || 0,
+          rank: 0,
         };
 
         setValidatorData(formattedValidator);
-        return;
+      } else {
+        throw new Error(result.message || 'Validator not found');
       }
-
-      // For Cosmos SDK chains, use the existing logic with multiple endpoint fallback
-      // Find the full chain data from cosmosChains
-      const fullChainData = cosmosChains.find(c => c.chainId === chain.chainId);
-      if (!fullChainData) {
-        throw new Error('Chain data not found in registry');
-      }
-
-      // Get REST endpoints for API calls - try multiple endpoints until one works
-      const restEndpoints = fullChainData.apis?.rest || [];
-      if (restEndpoints.length === 0) {
-        throw new Error('No REST endpoints available for this chain');
-      }
-
-      let validatorJson = null;
-      let workingEndpoint = null;
-      
-      // Try each REST endpoint until we find one that works
-      for (const endpoint of restEndpoints) {
-        const restEndpoint = endpoint.address;
-        console.log(`Trying REST endpoint for validator search: ${restEndpoint}`);
-        
-        try {
-          // Fetch validator information from the chain's REST API
-          const validatorResponse = await fetch(
-            `${restEndpoint}/cosmos/staking/v1beta1/validators/${address}`,
-            {
-              method: 'GET',
-              headers: {
-                'Accept': 'application/json',
-              },
-              // Add timeout to prevent hanging on slow endpoints
-              signal: AbortSignal.timeout(10000) // 10 second timeout
-            }
-          );
-
-          if (validatorResponse.ok) {
-            validatorJson = await validatorResponse.json();
-            workingEndpoint = restEndpoint;
-            console.log(`Successfully fetched validator from: ${restEndpoint}`);
-            break;
-          } else if (validatorResponse.status === 404) {
-            console.warn(`Validator not found on endpoint ${restEndpoint}`);
-            // Continue to try other endpoints - validator might exist on another endpoint
-          } else {
-            console.warn(`Endpoint ${restEndpoint} returned status: ${validatorResponse.status}`);
-          }
-        } catch (error) {
-          console.warn(`Failed to fetch from ${restEndpoint}:`, error instanceof Error ? error.message : String(error));
-        }
-      }
-
-      if (!validatorJson || !workingEndpoint) {
-        throw new Error('Validator not found on any available endpoint');
-      }
-
-      const validator = validatorJson.validator;
-
-      // Fetch additional validator info (delegation, etc.) using the working endpoint
-      try {
-        const delegationResponse = await fetch(
-          `${workingEndpoint}/cosmos/staking/v1beta1/validators/${address}/delegations`,
-          {
-            signal: AbortSignal.timeout(5000) // 5 second timeout
-          }
-        );
-
-        // Check if delegation response is successful (for future use)
-        if (delegationResponse.ok) {
-          await delegationResponse.json(); // Parse but don't use yet
-        }
-      } catch (error) {
-        console.warn('Failed to fetch delegation info, continuing without it');
-      }
-
-      // Calculate APR (Annual Percentage Rate) from chain data
-      const chainAPR = await calculateChainAPR(workingEndpoint, chain.chainId);
-
-      // Format validator data
-      const validatorCommission = parseFloat(validator.commission.commission_rates.rate) * 100;
-      const formattedValidator: ValidatorData = {
-        operatorAddress: validator.operator_address,
-        moniker: validator.description.moniker,
-        identity: validator.description.identity || '',
-        website: validator.description.website || '',
-        details: validator.description.details || '',
-        commission: {
-          rate: validatorCommission.toFixed(2),
-          maxRate: (parseFloat(validator.commission.commission_rates.max_rate) * 100).toFixed(2),
-          maxChangeRate: (parseFloat(validator.commission.commission_rates.max_change_rate) * 100).toFixed(2),
-        },
-        votingPower: (parseInt(validator.tokens) / 1000000).toFixed(0), // Convert to base unit
-        tokens: validator.tokens,
-        delegatorShares: validator.delegator_shares,
-        unbondingTime: '21 days', // Default for most Cosmos chains
-        jailed: validator.jailed,
-        status: validator.status,
-        apy: chainAPR,
-        rank: Math.floor(Math.random() * 100) + 1, // Mock rank
-      };
-
-      setValidatorData(formattedValidator);
     } catch (err) {
       console.error('Error fetching validator:', err);
       setValidatorError(err instanceof Error ? err.message : 'Failed to fetch validator information');
@@ -525,35 +398,24 @@ const ValidatorManagement: React.FC = () => {
       // Prepare the simplified data to send to the API
       const requestData = {
         chainId: selectedChain.chainId,
-        chainName: selectedChain.prettyName,
+        chainName: selectedChain.chainName,
+        prettyName: selectedChain.prettyName,
         validatorAddress: validatorAddress,
         defaultReferralReward: defaultReferralReward,
       };
 
-      // Make POST request to the API
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/admin/validators', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestData),
-      });
+      // Make POST request to the API using the new admin client
+      const result = await adminApi.createValidator(requestData);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `API request failed: ${response.status}`);
-      }
-
-      const result = await response.json();
       console.log('Chain enabled successfully:', result);
 
       setCopyToast(`✅ ${selectedChain.prettyName} chain enabled with validator!`);
       setTimeout(() => setCopyToast(null), 3000);
       
-      // Refresh enabled chain IDs
-      fetchEnabledChainIds();
+      // Refresh enabled chain IDs only if not already done by fetchValidators
+      if (activeTab !== 'validators') {
+        fetchEnabledChainIds();
+      }
       
       // Close modal and reset form
       setShowEnableModal(false);
@@ -569,49 +431,7 @@ const ValidatorManagement: React.FC = () => {
     }
   };  
 
-  // Function to calculate APR from chain data using the utility
-  const calculateChainAPR = async (restEndpoint: string, chainId?: string): Promise<number> => {
-    try {
-      if (chainId) {
-        // Get the appropriate staking denomination for this chain
-        const stakingDenom = getStakingDenom(chainId);
-        
-        // Use chain-specific presets for better accuracy
-        const result = await calculateAPRWithPresets(restEndpoint, chainId, stakingDenom);
-        return result.apr;
-      } else {
-        // Use simple APR calculation as fallback with default denom
-        return await getSimpleAPR(restEndpoint, 'uatom');
-      }
-    } catch (error) {
-      console.warn('Failed to calculate chain APR using utility, using default:', error);
-      return 12; // Default 12% APR
-    }
-  };
 
-  // Function to calculate validator-specific APR including commission
-  const calculateValidatorSpecificAPR = async (
-    restEndpoint: string, 
-    validatorAddress: string, 
-    chainId?: string
-  ): Promise<number> => {
-    try {
-      if (chainId && validatorAddress) {
-        // Get the appropriate staking denomination for this chain
-        const stakingDenom = getStakingDenom(chainId);
-        
-        // Use enhanced calculation that includes validator commission
-        const result = await calculateValidatorAPR(restEndpoint, validatorAddress, stakingDenom);
-        return result.apr;
-      } else {
-        // Fallback to chain APR without validator commission
-        return await calculateChainAPR(restEndpoint, chainId);
-      }
-    } catch (error) {
-      console.warn('Failed to calculate validator-specific APR, falling back to chain APR:', error);
-      return await calculateChainAPR(restEndpoint, chainId);
-    }
-  };
 
   // Load chains from chain-registry
   const loadChains = async () => {
@@ -652,218 +472,12 @@ const ValidatorManagement: React.FC = () => {
     }
   };
 
-  // Fetch validator data from chain
-  const fetchValidatorDataFromChain = async (chainId: string, validatorAddress: string) => {
-    console.log('fetchValidatorDataFromChain called with:', { chainId, validatorAddress });
-    
-    try {
-      // Get chain data from cosmos chain registry for API endpoints
-      const cosmosChainData = cosmosChains.find(chain => chain.chainId === chainId);
-      if (!cosmosChainData) {
-        console.warn(`Chain ${chainId} not found in cosmos registry`);
-        return null;
-      }
-
-      // Determine if this is a Namada chain
-      const isNamadaChain = chainId.includes('namada') || cosmosChainData.chainName.toLowerCase().includes('namada');
-      console.log('Chain type determined:', { isNamadaChain, chainId, chainName: cosmosChainData.chainName });
-
-      if (isNamadaChain) {
-        // For Namada, we need to fetch data from a Namada RPC endpoint
-        // Since Namada doesn't have a standard REST API like Cosmos chains,
-        // we'll need to use mock data or call a Namada-specific API
-        
-        let validatorInfo;
-        
-        // Check for known Namada validators (EthicalNode)
-        if (validatorAddress === 'tnam1q9n3ncfxevwgs8f2vna2lnw7kz567jrutgw57xqs') {
-          // EthicalNode validator - using known data
-          validatorInfo = {
-            moniker: 'EthicalNode',
-            commission: '10.00',
-            apy: 10.53,
-            votingPowerPercentage: '0.04',
-            votingPower: '0.04%',
-            unbondingTime: '14 days',
-            details: 'EthicalNode - Namada network validator',
-            rank: 2,
-            status: 'Active'
-          };
-        } else {
-          // For other Namada validators, try to fetch from Namada API or use mock data
-          // In a real implementation, you would call Namada's RPC endpoints
-          try {
-            // You could implement actual Namada RPC calls here
-            // For now, using reasonable defaults
-            validatorInfo = {
-              moniker: `Validator ${validatorAddress.slice(-8)}`,
-              commission: '5.00',
-              apy: 8.5, // Realistic Namada APR
-              votingPowerPercentage: (Math.random() * 5).toFixed(2),
-              votingPower: `${(Math.random() * 5).toFixed(2)}%`,
-              unbondingTime: '21 epochs',
-              details: 'Namada network validator',
-              rank: Math.floor(Math.random() * 50) + 1,
-              status: 'Active'
-            };
-          } catch (error) {
-            console.warn(`Failed to fetch Namada validator ${validatorAddress}:`, error);
-            // Fallback data
-            validatorInfo = {
-              moniker: `Validator ${validatorAddress.slice(-8)}`,
-              commission: '5.00',
-              apy: 8.5, // Default Namada APR even for unknown validators
-              votingPowerPercentage: '0',
-              votingPower: '0%',
-              unbondingTime: '21 epochs',
-              details: 'Namada network validator',
-              rank: 999,
-              status: 'Unknown'
-            };
-          }
-        }
-        
-        const result = {
-          moniker: validatorInfo.moniker,
-          commission: {
-            rate: parseFloat(validatorInfo.commission)
-          },
-          apy: validatorInfo.apy,
-          votingPower: validatorInfo.votingPower,
-          status: validatorInfo.status,
-          unbondingTime: validatorInfo.unbondingTime
-        };
-        
-        console.log('Returning Namada validator data:', result);
-        return result;
-      } else {
-        // For Cosmos chains, use REST API - try multiple endpoints until one works
-        const restEndpoints = cosmosChainData.apis?.rest || [];
-        if (restEndpoints.length === 0) {
-          console.warn(`No REST endpoints found for ${chainId}`);
-          return null;
-        }
-
-        let validatorData = null;
-        let workingEndpoint = null;
-        
-        // Try each REST endpoint until we find one that works
-        for (const endpoint of restEndpoints) {
-          const restEndpoint = endpoint.address;
-          console.log(`Trying REST endpoint: ${restEndpoint}`);
-          
-          try {
-            // Fetch validator info
-            const validatorResponse = await fetch(`${restEndpoint}/cosmos/staking/v1beta1/validators/${validatorAddress}`, {
-              method: 'GET',
-              headers: {
-                'Accept': 'application/json',
-              },
-              // Add timeout to prevent hanging on slow endpoints
-              signal: AbortSignal.timeout(10000) // 10 second timeout
-            });
-            
-            if (validatorResponse.ok) {
-              validatorData = await validatorResponse.json();
-              workingEndpoint = restEndpoint;
-              console.log(`Successfully fetched validator data from: ${restEndpoint}`);
-              break;
-            } else {
-              console.warn(`Endpoint ${restEndpoint} returned status: ${validatorResponse.status}`);
-            }
-          } catch (error) {
-            console.warn(`Failed to fetch from ${restEndpoint}:`, error instanceof Error ? error.message : String(error));
-          }
-        }
-
-        if (!validatorData || !workingEndpoint) {
-          console.warn(`All REST endpoints failed for ${chainId}`);
-          return {
-            moniker: validatorAddress.slice(0, 10) + '...',
-            commission: { rate: 5.0 },
-            apy: 12.0, // Default APR when all endpoints fail
-            votingPower: '0',
-            status: 'Unknown',
-            unbondingTime: '21 days'
-          };
-        }
-
-        try {
-          // Fetch staking params for unbonding time using the working endpoint
-          let unbondingDays = '21 days';
-          try {
-            const paramsResponse = await fetch(`${workingEndpoint}/cosmos/staking/v1beta1/params`, {
-              signal: AbortSignal.timeout(5000) // 5 second timeout for params
-            });
-            if (paramsResponse.ok) {
-              const paramsData = await paramsResponse.json();
-              unbondingDays = `${Math.floor(parseInt(paramsData.params.unbonding_time.replace('s', '')) / (24 * 60 * 60))} days`;
-            }
-          } catch (error) {
-            console.warn('Failed to fetch unbonding time, using default');
-          }
-
-          // Fetch staking pool to get total bonded tokens for voting power calculation
-          let totalBondedTokens = 1;
-          try {
-            const poolResponse = await fetch(`${workingEndpoint}/cosmos/staking/v1beta1/pool`, {
-              signal: AbortSignal.timeout(5000)
-            });
-            if (poolResponse.ok) {
-              const poolData = await poolResponse.json();
-              totalBondedTokens = parseInt(poolData.pool.bonded_tokens);
-            }
-          } catch (error) {
-            console.warn('Failed to fetch staking pool, using default for voting power calculation');
-          }
-
-          const validator = validatorData.validator;
-          const commission = parseFloat(validator.commission.commission_rates.rate) * 100;
-          const validatorTokens = parseInt(validator.tokens);
-          
-          // Calculate voting power as percentage of total bonded tokens
-          const votingPowerPercentage = (validatorTokens / totalBondedTokens * 100).toFixed(4);
-          
-          // Calculate validator-specific APR including commission
-          const validatorAPR = await calculateValidatorSpecificAPR(workingEndpoint, validatorAddress, chainId);
-          
-          console.log(`Cosmos validator ${validatorAddress}: tokens=${validatorTokens}, totalBonded=${totalBondedTokens}, votingPower=${votingPowerPercentage}%, APR=${validatorAPR.toFixed(2)}%`);
-          
-          return {
-            moniker: validator.description.moniker || validatorAddress.slice(0, 10) + '...',
-            commission: {
-              rate: commission
-            },
-            apy: validatorAPR,
-            votingPower: `${votingPowerPercentage}%`,
-            status: validator.status === 'BOND_STATUS_BONDED' ? 'Active' : 'Inactive',
-            unbondingTime: unbondingDays
-          };
-        } catch (error) {
-          console.warn(`Failed to process Cosmos validator data: ${error}`);
-          return {
-            moniker: validatorAddress.slice(0, 10) + '...',
-            commission: { rate: 5.0 },
-            apy: 12.0, // Default APR when processing fails
-            votingPower: '0.0001%',
-            status: 'Unknown',
-            unbondingTime: '21 days'
-          };
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching validator data from chain: ${error}`);
-      return null;
-    }
-  };
-
   // Fetch validators from API
   const fetchValidators = async (page = 1, search = '', activeFilter = 'all') => {
     try {
       setValidatorsLoading(true);
       setValidatorsError(null);
       
-      const token = localStorage.getItem('adminToken');
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '10',
@@ -878,61 +492,22 @@ const ValidatorManagement: React.FC = () => {
         params.append('active', activeFilter === 'active' ? 'true' : 'false');
       }
       
-      const response = await fetch(`http://localhost:3000/api/admin/validators?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch validators: ${response.status}`);
-      }
-      
-      const result = await response.json();
+      // Use the new admin API client which handles token expiration automatically
+      const result = await adminApi.get(`/admin/validators?${params}`);
       
       if (result.success) {
-        // Enrich validator data with chain information
-        const enrichedValidators = await Promise.all(
-          result.data.validators.map(async (validator: ValidatorRecord) => {
-            console.log('Processing validator from API:', {
-              chainId: validator.chainId,
-              validatorAddress: validator.validatorAddress,
-              chainName: validator.chainName
-            });
-            
-            let validatorInfo = null;
-            let retryCount = 0;
-            const maxRetries = 2;
-            
-            // Retry logic for fetching validator data
-            while (retryCount < maxRetries && !validatorInfo) {
-              try {
-                validatorInfo = await fetchValidatorDataFromChain(validator.chainId, validator.validatorAddress);
-                if (!validatorInfo) {
-                  retryCount++;
-                  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
-                }
-              } catch (error) {
-                console.warn(`Retry ${retryCount + 1} failed for validator ${validator.validatorAddress}:`, error);
-                retryCount++;
-                if (retryCount < maxRetries) {
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-              }
+        // Backend now provides all validator data including APR, commission, power, etc.
+        // No need for complex enrichment - just add chain registry data for networkType
+        const enrichedValidators = result.data.validators.map((validator: ValidatorRecord) => {
+          const chainRegistryData = chains.find(chain => chain.chainId === validator.chainId);
+          
+          return {
+            ...validator,
+            chainData: {
+              networkType: chainRegistryData?.networkType || 'mainnet'
             }
-            
-            const chainRegistryData = chains.find(chain => chain.chainId === validator.chainId);
-            
-            return {
-              ...validator,
-              validatorInfo: validatorInfo,
-              chainData: {
-                networkType: chainRegistryData?.networkType || 'mainnet'
-              }
-            };
-          })
-        );
+          };
+        });
         
         setValidators(enrichedValidators);
         setValidatorTotalPages(result.data.pagination.totalPages);
@@ -954,23 +529,18 @@ const ValidatorManagement: React.FC = () => {
   // Fetch all enabled chain IDs (for checking if chains are already enabled)
   const fetchEnabledChainIds = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      // Fetch all validators with a high limit to get all enabled chains
-      const response = await fetch(`http://localhost:3000/api/admin/validators?limit=1000`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch enabled chains: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        const chainIds = new Set<string>(result.data.validators.map((v: ValidatorRecord) => v.chainId));
+      // Only fetch if we don't already have validators data loaded
+      if (validators.length === 0) {
+        // Fetch all validators with a high limit to get all enabled chains
+        const result = await adminApi.get('/admin/validators?limit=1000');
+        
+        if (result.success) {
+          const chainIds = new Set<string>(result.data.validators.map((v: ValidatorRecord) => v.chainId));
+          setEnabledChainIds(chainIds);
+        }
+      } else {
+        // Use existing validators data to update enabled chain IDs
+        const chainIds = new Set<string>(validators.map((v: ValidatorRecord) => v.chainId));
         setEnabledChainIds(chainIds);
       }
     } catch (err) {
@@ -984,22 +554,7 @@ const ValidatorManagement: React.FC = () => {
       setEditValidatorLoading(true);
       setEditValidatorError(null);
       
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin/validators/${validatorId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to update validator: ${response.status}`);
-      }
-      
-      const result = await response.json();
+      const result = await adminApi.put(`/admin/validators/${validatorId}`, updateData);
       
       if (result.success) {
         setCopyToast('Validator updated successfully!');
@@ -1027,20 +582,7 @@ const ValidatorManagement: React.FC = () => {
     try {
       setDeleteLoading(true);
       
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin/validators/${validatorId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to delete validator: ${response.status}`);
-      }
-      
-      const result = await response.json();
+      const result = await adminApi.delete(`/admin/validators/${validatorId}`);
       
       if (result.success) {
         setCopyToast('Validator deleted successfully!');
@@ -1067,20 +609,7 @@ const ValidatorManagement: React.FC = () => {
   // Toggle validator status
   const toggleValidatorStatus = async (validatorId: string) => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin/validators/${validatorId}/toggle-status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to toggle validator status: ${response.status}`);
-      }
-      
-      const result = await response.json();
+      const result = await adminApi.patch(`/admin/validators/${validatorId}/toggle-status`);
       
       if (result.success) {
         const newStatus = result.data.validator.isActive ? 'activated' : 'deactivated';
@@ -1110,7 +639,8 @@ const ValidatorManagement: React.FC = () => {
 
   useEffect(() => {
     loadChains();
-    // Also fetch enabled chain IDs when component loads
+    // Only load enabled chain IDs initially for the chains tab UI
+    // The validators tab will load full data when accessed
     fetchEnabledChainIds();
   }, []);
 
@@ -1676,7 +1206,7 @@ const ValidatorManagement: React.FC = () => {
                             <div className={`text-sm font-medium ${
                               isDarkMode ? 'text-white' : 'text-gray-900'
                             }`}>
-                              {validator.validatorInfo?.moniker || 'Unknown Validator'}
+                              {validator.validatorName || 'Unknown Validator'}
                             </div>
                             <div className={`text-xs ${
                               isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -1709,89 +1239,42 @@ const ValidatorManagement: React.FC = () => {
                           <span className={`${
                             isDarkMode ? 'text-white' : 'text-gray-900'
                           }`}>
-                            {validator.validatorInfo ? 
-                              `${validator.validatorInfo.commission.rate.toFixed(2)}%` : 
-                              <div className="flex items-center gap-2">
-                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Loading...
-                              </div>
-                            }
+                            {(validator.validatorCommission * 100).toFixed(2)}%
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {validator.validatorInfo ? (
-                            <span className={`font-medium ${
-                              validator.validatorInfo.apy > 10 ? 'text-green-600' : 
-                              validator.validatorInfo.apy > 5 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              {validator.validatorInfo.apy.toFixed(2)}%
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</span>
-                            </div>
-                          )}
+                          <span className={`font-medium ${
+                            validator.validatorAPR > 10 ? 'text-green-600' : 
+                            validator.validatorAPR > 5 ? 'text-yellow-600' : 'text-red-600'
+                          }`}>
+                            {validator.validatorAPR.toFixed(2)}%
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span className={`${
                             isDarkMode ? 'text-white' : 'text-gray-900'
                           }`}>
-                            {validator.validatorInfo ? 
-                              validator.validatorInfo.votingPower : 
-                              <div className="flex items-center gap-2">
-                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Loading...
-                              </div>
-                            }
+                            {(validator.validatorPower).toFixed(2)}%
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {validator.validatorInfo ? (
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              validator.isActive
-                                ? isDarkMode 
-                                  ? 'bg-green-900 text-green-200' 
-                                  : 'bg-green-100 text-green-800'
-                                : isDarkMode 
-                                  ? 'bg-red-900 text-red-200' 
-                                  : 'bg-red-100 text-red-800'
-                            }`}>
-                              {validator.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</span>
-                            </div>
-                          )}
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            validator.isActive
+                              ? isDarkMode 
+                                ? 'bg-green-900 text-green-200' 
+                                : 'bg-green-100 text-green-800'
+                              : isDarkMode 
+                                ? 'bg-red-900 text-red-200' 
+                                : 'bg-red-100 text-red-800'
+                          }`}>
+                            {validator.isActive ? 'Active' : 'Inactive'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span className={`${
                             isDarkMode ? 'text-white' : 'text-gray-900'
                           }`}>
-                            {validator.validatorInfo ? 
-                              validator.validatorInfo.unbondingTime : 
-                              <div className="flex items-center gap-2">
-                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Loading...
-                              </div>
-                            }
+                            {validator.validatorUnbondingPeriod}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -2053,13 +1536,6 @@ const ValidatorManagement: React.FC = () => {
                         }`}>
                           {validatorData.jailed ? 'Jailed' : 'Active'}
                         </span>
-                        {validatorData.rank && (
-                          <span className={`text-xs mt-1 ${
-                            isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                          }`}>
-                            Rank #{validatorData.rank}
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -2112,7 +1588,7 @@ const ValidatorManagement: React.FC = () => {
                           {/* Check if it's a Namada chain to display percentage */}
                           {(selectedChain?.chainId.includes('namada') || selectedChain?.prettyName.toLowerCase().includes('namada')) 
                             ? `${validatorData.votingPower}%` 
-                            : Number(validatorData.votingPower).toLocaleString()}
+                            : Number(validatorData.votingPower).toLocaleString() + '%'}
                         </div>
                       </div>
 
@@ -2131,20 +1607,6 @@ const ValidatorManagement: React.FC = () => {
                           {validatorData.unbondingTime}
                         </div>
                       </div>
-                    </div>
-
-                    {/* Additional Details */}
-                    <div className={`text-xs ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                    }`}>
-                      <div><strong>Max Commission:</strong> {validatorData.commission.maxRate}%</div>
-                      <div><strong>Max Change Rate:</strong> {validatorData.commission.maxChangeRate}%</div>
-                      {validatorData.details && (
-                        <div className="mt-2">
-                          <strong>Details:</strong> {validatorData.details.substring(0, 100)}
-                          {validatorData.details.length > 100 && '...'}
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
+import adminApiClient from '../../utils/adminApiClient';
 
 interface Admin {
   walletAddress: string;
@@ -54,19 +55,7 @@ const AdminManagement: React.FC = () => {
   // Fetch admins from backend
   const fetchAdmins = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/admin-management/admins', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch admins');
-      }
-
-      const result = await response.json();
+      const result = await adminApiClient.get('/admin-management/admins');
       setAdmins(result.data?.admins || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admins');
@@ -80,24 +69,14 @@ const AdminManagement: React.FC = () => {
     try {
       setPermissionsLoading(true);
       setPermissionsError(null);
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/admin-management/permissions', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.permissions) {
-          setAvailablePermissions(result.data.permissions);
-          console.log('Successfully loaded permissions from API:', result.data.permissions);
-        } else {
-          throw new Error('API returned success but no permissions data');
-        }
+      
+      const result = await adminApiClient.get('/admin-management/permissions');
+      
+      if (result.success && result.data?.permissions) {
+        setAvailablePermissions(result.data.permissions);
+        console.log('Successfully loaded permissions from API:', result.data.permissions);
       } else {
-        throw new Error(`Failed to fetch permissions: ${response.status} ${response.statusText}`);
+        throw new Error('API returned success but no permissions data');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch permissions from API';
@@ -140,8 +119,7 @@ const AdminManagement: React.FC = () => {
     setAddingAdmin(true);
 
     try {
-      const token = localStorage.getItem('adminToken');
-      console.log('Token found:', !!token);
+      console.log('Token found:', !!localStorage.getItem('adminToken'));
 
       const requestBody = {
         walletAddress: newAdmin.walletAddress.trim(),
@@ -151,30 +129,9 @@ const AdminManagement: React.FC = () => {
       };
       console.log('Request body:', requestBody);
 
-      const response = await fetch('http://localhost:3000/api/admin-management/admins', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
+      const result = await adminApiClient.post('/admin-management/admins', requestBody);
 
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-
-      let result;
-      try {
-        result = await response.json();
-        console.log('Response data:', result);
-      } catch (parseError) {
-        console.error('Failed to parse response JSON:', parseError);
-        throw new Error('Invalid response from server');
-      }
-
-      if (!response.ok) {
-        throw new Error(result?.message || `Server error: ${response.status} ${response.statusText}`);
-      }
+      console.log('Response data:', result);
 
       if (!result.success) {
         throw new Error(result.message || 'Server returned failure status');
@@ -203,18 +160,11 @@ const AdminManagement: React.FC = () => {
   // Toggle admin status
   const toggleAdminStatus = async (walletAddress: string, currentStatus: boolean) => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin-management/admins/${walletAddress}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ isActive: !currentStatus })
+      const result = await adminApiClient.patch(`/admin-management/admins/${walletAddress}/status`, { 
+        isActive: !currentStatus 
       });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
+      
+      if (!result.success) {
         throw new Error(result.message || 'Failed to update admin status');
       }
 
@@ -231,18 +181,11 @@ const AdminManagement: React.FC = () => {
     if (!selectedAdmin) return;
 
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin-management/admins/${selectedAdmin.walletAddress}/permissions`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ permissions: selectedAdmin.permissions })
+      const result = await adminApiClient.patch(`/admin-management/admins/${selectedAdmin.walletAddress}/permissions`, { 
+        permissions: selectedAdmin.permissions 
       });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
+      
+      if (!result.success) {
         throw new Error(result.message || 'Failed to update permissions');
       }
 
@@ -268,17 +211,9 @@ const AdminManagement: React.FC = () => {
 
     setDeletingAdmin(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/admin-management/admins/${adminToDelete.walletAddress}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
+      const result = await adminApiClient.delete(`/admin-management/admins/${adminToDelete.walletAddress}`);
+      
+      if (!result.success) {
         throw new Error(result.message || 'Failed to delete admin');
       }
 

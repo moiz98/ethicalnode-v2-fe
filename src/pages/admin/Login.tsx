@@ -127,27 +127,6 @@ const AdminLogin: React.FC = () => {
             </motion.div>
           )}
 
-          {/* How it works */}
-          <div className={`p-4 rounded-lg border ${
-            isDarkMode 
-              ? 'bg-gray-800 border-gray-700' 
-              : 'bg-gray-50 border-gray-200'
-          }`}>
-            <h3 className={`text-sm font-medium mb-2 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>
-              How Admin Authentication Works:
-            </h3>
-            <ul className={`text-xs space-y-1 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              <li>1. Click to connect your registered admin wallet</li>
-              <li>2. Sign the verification message in Keplr</li>
-              <li>3. Backend verifies your admin status</li>
-              <li>4. Automatic redirect to dashboard on success</li>
-            </ul>
-          </div>
-
           <div className="text-center">
             <Link
               to="/"

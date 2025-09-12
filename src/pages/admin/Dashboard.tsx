@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useWallet } from '../../contexts/WalletContext';
+import { X, AlertTriangle } from 'lucide-react';
+import adminApiClient from '../../utils/adminApiClient';
 
 interface Activity {
   _id: string;
@@ -15,26 +18,19 @@ interface Activity {
 
 const AdminDashboard: React.FC = () => {
   const { isDarkMode } = useTheme();
+  const { namadaNotAvailable } = useWallet();
   const navigate = useNavigate();
   const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [showNamadaNotification, setShowNamadaNotification] = useState(false);
 
   // Fetch recent activities from API
   const fetchRecentActivities = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/admin-management/activities?page=1&limit=5', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.activities) {
-          setRecentActivities(result.data.activities);
-        }
+      const result = await adminApiClient.get('/admin-management/activities?page=1&limit=5');
+      
+      if (result.success && result.data?.activities) {
+        setRecentActivities(result.data.activities);
       }
     } catch (err) {
       console.error('Error fetching activities:', err);
@@ -47,6 +43,13 @@ const AdminDashboard: React.FC = () => {
     fetchRecentActivities();
   }, []);
 
+  // Show Namada notification if wallet is not available
+  useEffect(() => {
+    if (namadaNotAvailable) {
+      setShowNamadaNotification(true);
+    }
+  }, [namadaNotAvailable]);
+
   const stats = [
     { title: 'Total Users', value: '2,834', change: '+12%', icon: '👥' },
     { title: 'Active Projects', value: '45', change: '+5%', icon: '📊' },
@@ -56,6 +59,59 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Namada Not Available Notification */}
+      {showNamadaNotification && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="fixed top-4 right-4 z-50 max-w-sm w-full"
+        >
+          <div className={`rounded-lg shadow-lg border-2 p-4 ${
+            isDarkMode 
+              ? 'bg-yellow-900 border-yellow-600 text-yellow-100' 
+              : 'bg-yellow-50 border-yellow-300 text-yellow-800'
+          }`}>
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              </div>
+              <div className="ml-3 w-0 flex-1">
+                <h3 className="text-sm font-medium mb-1">
+                  Namada Wallet Not Detected
+                </h3>
+                <p className="text-sm">
+                  The Namada wallet extension was not found. Please install it to access the full functionality of the platform.
+                </p>
+                <div className="mt-3">
+                  <button
+                    onClick={() => window.open('https://namada.net', '_blank')}
+                    className={`text-sm underline font-medium hover:no-underline ${
+                      isDarkMode ? 'text-yellow-200' : 'text-yellow-700'
+                    }`}
+                  >
+                    Install Namada Wallet
+                  </button>
+                </div>
+              </div>
+              <div className="ml-4 flex-shrink-0">
+                <button
+                  onClick={() => setShowNamadaNotification(false)}
+                  className={`rounded-md inline-flex ${
+                    isDarkMode 
+                      ? 'text-yellow-200 hover:text-yellow-100' 
+                      : 'text-yellow-600 hover:text-yellow-800'
+                  }`}
+                >
+                  <span className="sr-only">Close</span>
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

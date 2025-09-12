@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
+import adminApiClient from '../../utils/adminApiClient';
 
 interface HalalScreener {
   _id: string;
@@ -82,31 +83,24 @@ const HalalScreenerManagement: React.FC = () => {
   const fetchScreeners = async (page: number = 1) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/halal-screener/admin/all?page=${page}&limit=20`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      
+      const result = await adminApiClient.get(`/halal-screener/admin/all?page=${page}&limit=20`);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.screeners) {
-          setScreeners(result.data.screeners);
-          setPagination(result.data.pagination);
-        } else {
-          console.error('Failed to fetch halal screeners');
-          setCopyToast('❌ Failed to fetch halal screeners');
-          setTimeout(() => setCopyToast(null), 3000);
-        }
+      if (result.success && result.data?.screeners) {
+        setScreeners(result.data.screeners);
+        setPagination(result.data.pagination);
       } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        console.error('Failed to fetch halal screeners');
+        setCopyToast('❌ Failed to fetch halal screeners');
+        setTimeout(() => setCopyToast(null), 3000);
       }
-    } catch (err) {
-      console.error('Error fetching halal screeners:', err);
-      setCopyToast('❌ Failed to load halal screeners');
-      setTimeout(() => setCopyToast(null), 3000);
+    } catch (err: any) {
+      // Don't show error if request was aborted
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching halal screeners:', err);
+        setCopyToast('❌ Failed to load halal screeners');
+        setTimeout(() => setCopyToast(null), 3000);
+      }
     } finally {
       setLoading(false);
     }
@@ -115,34 +109,18 @@ const HalalScreenerManagement: React.FC = () => {
   // Create new screener
   const createScreener = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch('http://localhost:3000/api/halal-screener/admin', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
+      const result = await adminApiClient.post('/halal-screener/admin', formData);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          console.log('Halal screener created successfully');
-          setCopyToast('✅ Halal screener created successfully!');
-          setTimeout(() => setCopyToast(null), 3000);
-          fetchScreeners(currentPage);
-          setShowAddModal(false);
-          resetForm();
-        } else {
-          console.error(result.message || 'Failed to create screener');
-          setCopyToast(`❌ ${result.message || 'Failed to create screener'}`);
-          setTimeout(() => setCopyToast(null), 5000);
-        }
+      if (result.success) {
+        console.log('Halal screener created successfully');
+        setCopyToast('✅ Halal screener created successfully!');
+        setTimeout(() => setCopyToast(null), 3000);
+        fetchScreeners(currentPage);
+        setShowAddModal(false);
+        resetForm();
       } else {
-        const errorData = await response.json();
-        console.error(errorData.message || 'Failed to create screener');
-        setCopyToast(`❌ ${errorData.message || 'Failed to create screener'}`);
+        console.error(result.message || 'Failed to create screener');
+        setCopyToast(`❌ ${result.message || 'Failed to create screener'}`);
         setTimeout(() => setCopyToast(null), 5000);
       }
     } catch (err) {
@@ -157,35 +135,19 @@ const HalalScreenerManagement: React.FC = () => {
     if (!selectedScreener) return;
 
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/halal-screener/admin/${selectedScreener._id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
+      const result = await adminApiClient.put(`/halal-screener/admin/${selectedScreener._id}`, formData);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          console.log('Halal screener updated successfully');
-          setCopyToast('✅ Halal screener updated successfully!');
-          setTimeout(() => setCopyToast(null), 3000);
-          fetchScreeners(currentPage);
-          setShowEditModal(false);
-          setSelectedScreener(null);
-          resetForm();
-        } else {
-          console.error(result.message || 'Failed to update screener');
-          setCopyToast(`❌ ${result.message || 'Failed to update screener'}`);
-          setTimeout(() => setCopyToast(null), 5000);
-        }
+      if (result.success) {
+        console.log('Halal screener updated successfully');
+        setCopyToast('✅ Halal screener updated successfully!');
+        setTimeout(() => setCopyToast(null), 3000);
+        fetchScreeners(currentPage);
+        setShowEditModal(false);
+        setSelectedScreener(null);
+        resetForm();
       } else {
-        const errorData = await response.json();
-        console.error(errorData.message || 'Failed to update screener');
-        setCopyToast(`❌ ${errorData.message || 'Failed to update screener'}`);
+        console.error(result.message || 'Failed to update screener');
+        setCopyToast(`❌ ${result.message || 'Failed to update screener'}`);
         setTimeout(() => setCopyToast(null), 5000);
       }
     } catch (err) {
@@ -198,32 +160,18 @@ const HalalScreenerManagement: React.FC = () => {
   // Toggle screener status
   const toggleScreenerStatus = async (screener: HalalScreener) => {
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/halal-screener/admin/${screener._id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ isActive: !screener.isActive })
+      const result = await adminApiClient.patch(`/halal-screener/admin/${screener._id}/status`, { 
+        isActive: !screener.isActive 
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          console.log(`Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully`);
-          setCopyToast(`✅ Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully!`);
-          setTimeout(() => setCopyToast(null), 3000);
-          fetchScreeners(currentPage);
-        } else {
-          console.error(result.message || 'Failed to update status');
-          setCopyToast(`❌ ${result.message || 'Failed to update status'}`);
-          setTimeout(() => setCopyToast(null), 5000);
-        }
+      if (result.success) {
+        console.log(`Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully`);
+        setCopyToast(`✅ Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully!`);
+        setTimeout(() => setCopyToast(null), 3000);
+        fetchScreeners(currentPage);
       } else {
-        const errorData = await response.json();
-        console.error(errorData.message || 'Failed to update status');
-        setCopyToast(`❌ ${errorData.message || 'Failed to update status'}`);
+        console.error(result.message || 'Failed to update status');
+        setCopyToast(`❌ ${result.message || 'Failed to update status'}`);
         setTimeout(() => setCopyToast(null), 5000);
       }
     } catch (err) {
@@ -238,33 +186,18 @@ const HalalScreenerManagement: React.FC = () => {
     if (!selectedScreener) return;
 
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`http://localhost:3000/api/halal-screener/admin/${selectedScreener._id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const result = await adminApiClient.delete(`/halal-screener/admin/${selectedScreener._id}`);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          console.log('Halal screener deleted successfully');
-          setCopyToast('✅ Halal screener deleted successfully!');
-          setTimeout(() => setCopyToast(null), 3000);
-          fetchScreeners(currentPage);
-          setShowDeleteModal(false);
-          setSelectedScreener(null);
-        } else {
-          console.error(result.message || 'Failed to delete screener');
-          setCopyToast(`❌ ${result.message || 'Failed to delete screener'}`);
-          setTimeout(() => setCopyToast(null), 5000);
-        }
+      if (result.success) {
+        console.log('Halal screener deleted successfully');
+        setCopyToast('✅ Halal screener deleted successfully!');
+        setTimeout(() => setCopyToast(null), 3000);
+        fetchScreeners(currentPage);
+        setShowDeleteModal(false);
+        setSelectedScreener(null);
       } else {
-        const errorData = await response.json();
-        console.error(errorData.message || 'Failed to delete screener');
-        setCopyToast(`❌ ${errorData.message || 'Failed to delete screener'}`);
+        console.error(result.message || 'Failed to delete screener');
+        setCopyToast(`❌ ${result.message || 'Failed to delete screener'}`);
         setTimeout(() => setCopyToast(null), 5000);
       }
     } catch (err) {
@@ -277,7 +210,7 @@ const HalalScreenerManagement: React.FC = () => {
   // Handle page change
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    fetchScreeners(page);
+    // Don't call fetchScreeners here - let useEffect handle it
   };
 
   // Reset form
@@ -371,8 +304,29 @@ const HalalScreenerManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchScreeners();
+    let isMounted = true;
+    const abortController = new AbortController();
+    
+    const loadInitialData = async () => {
+      if (isMounted) {
+        await fetchScreeners(1);
+      }
+    };
+    
+    loadInitialData();
+    
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, []);
+
+  // Fetch screeners when page changes
+  useEffect(() => {
+    if (currentPage > 1) { // Only call if page changed from initial
+      fetchScreeners(currentPage);
+    }
+  }, [currentPage]);
 
   if (loading && screeners.length === 0) {
     return (

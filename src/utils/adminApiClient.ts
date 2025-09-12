@@ -14,6 +14,8 @@ interface RequestConfig {
 class AdminApiClient {
   private baseUrl: string;
   private onTokenExpired?: () => Promise<void>;
+  private isRefreshing: boolean = false;
+  private refreshPromise: Promise<void> | null = null;
 
   constructor(baseUrl: string = 'http://localhost:3000/api') {
     this.baseUrl = baseUrl;
@@ -22,6 +24,12 @@ class AdminApiClient {
   // Set the callback for when token expires
   setTokenExpiredHandler(handler: () => Promise<void>) {
     this.onTokenExpired = handler;
+  }
+
+  // Reset refresh state (useful for testing or manual reset)
+  resetRefreshState() {
+    this.isRefreshing = false;
+    this.refreshPromise = null;
   }
 
   // Get the current token from localStorage
@@ -41,6 +49,43 @@ class AdminApiClient {
         message.toLowerCase().includes('jwt expired')
       ))
     );
+  }
+
+  // Handle token refresh with concurrency control
+  private async handleTokenRefresh(): Promise<void> {
+    // If already refreshing, wait for the existing refresh to complete
+    if (this.isRefreshing && this.refreshPromise) {
+      console.log('Token refresh already in progress, waiting...');
+      return this.refreshPromise;
+    }
+
+    // Start new refresh process
+    this.isRefreshing = true;
+    this.refreshPromise = this.performTokenRefresh();
+    
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.isRefreshing = false;
+      this.refreshPromise = null;
+    }
+  }
+
+  // Perform the actual token refresh
+  private async performTokenRefresh(): Promise<void> {
+    console.log('Starting token refresh...');
+    
+    if (this.onTokenExpired) {
+      try {
+        await this.onTokenExpired();
+        console.log('Token refresh completed successfully');
+      } catch (reAuthError) {
+        console.error('Re-authentication failed:', reAuthError);
+        throw new Error('Session expired. Please log in again.');
+      }
+    } else {
+      throw new Error('Session expired. Please log in again.');
+    }
   }
 
   // Make API request with automatic token handling
@@ -71,17 +116,16 @@ class AdminApiClient {
       if (!response.ok && this.isTokenExpiredError(response.status, result.message)) {
         console.warn('Admin token has expired, triggering re-authentication...');
         
-        if (this.onTokenExpired) {
-          try {
-            await this.onTokenExpired();
-            // After successful re-auth, retry the original request
-            return this.request<T>(endpoint, config);
-          } catch (reAuthError) {
-            console.error('Re-authentication failed:', reAuthError);
-            throw new Error('Session expired. Please log in again.');
-          }
-        } else {
-          throw new Error('Session expired. Please log in again.');
+        try {
+          // Use centralized token refresh handling
+          await this.handleTokenRefresh();
+          
+          // After successful re-auth, retry the original request
+          console.log('Retrying original request after token refresh...');
+          return this.request<T>(endpoint, config);
+        } catch (reAuthError) {
+          console.error('Token refresh failed:', reAuthError);
+          throw reAuthError;
         }
       }
 

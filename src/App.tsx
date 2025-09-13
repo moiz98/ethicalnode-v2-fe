@@ -17,6 +17,7 @@ import Activities from './pages/admin/Activities';
 import HalalScreenerManagement from './pages/admin/HalalScreenerManagement';
 import ValidatorManagement from './pages/admin/ValidatorManagement';
 import InvestorManagement from './pages/admin/InvestorManagement';
+import OrgReferralCodeManagement from './pages/admin/OrgReferralCodeManagement';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AdminToastIntegration from './components/AdminToastIntegration';
@@ -126,6 +127,7 @@ function App() {
                     <Route path="activities" element={<Activities />} />
                     <Route path="halal-screener" element={<HalalScreenerManagement />} />
                     <Route path="validators" element={<ValidatorManagement />} />
+                    <Route path="org-referral-codes" element={<OrgReferralCodeManagement />} />
                   </Route>
                 </Routes>
               </AdminToastIntegration>

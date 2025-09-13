@@ -42,18 +42,19 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {children}
       
       {/* Toast Container */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        <AnimatePresence>
+      <div className="fixed top-4 right-4 z-[9999] space-y-3 max-w-sm w-full pointer-events-none">
+        <AnimatePresence mode="popLayout">
           {toasts.map((toast) => (
-            <Toast
-              key={toast.id}
-              id={toast.id}
-              type={toast.type}
-              title={toast.title}
-              message={toast.message}
-              duration={toast.duration}
-              onRemove={removeToast}
-            />
+            <div key={toast.id} className="pointer-events-auto">
+              <Toast
+                id={toast.id}
+                type={toast.type}
+                title={toast.title}
+                message={toast.message}
+                duration={toast.duration}
+                onRemove={removeToast}
+              />
+            </div>
           ))}
         </AnimatePresence>
       </div>

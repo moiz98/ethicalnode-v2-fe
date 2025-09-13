@@ -93,12 +93,32 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         // If wallet has changed, update the context
         if (currentAddress !== keplrAddress) {
           console.log("Wallet change confirmed via event in context, updating...");
+          
+          // Get the new public key for the backend API
+          const newPublicKey = Array.from(key.pubKey).map(byte => byte.toString(16).padStart(2, '0')).join('');
+          
           setKeplrAddress(currentAddress);
           setKeplrName(currentName);
+          setKeplrPublicKey(newPublicKey);
           
           // Update localStorage
           localStorage.setItem('keplrAddress', currentAddress);
           localStorage.setItem('keplrName', currentName);
+          localStorage.setItem('keplrPublicKey', newPublicKey);
+
+          // Trigger backend update for the new wallet
+          console.log("🔄 Wallet changed - triggering backend update...");
+          const backendUpdateSuccess = await sendWalletDataToBackend(newPublicKey, namadaAddress);
+          
+          if (backendUpdateSuccess) {
+            console.log("✅ Backend update successful - investor profile updated");
+            // Small delay to ensure backend processing is complete
+            setTimeout(() => {
+              console.log("📱 Ready for components to fetch updated data");
+            }, 500);
+          } else {
+            console.warn("⚠️ Backend update failed, but continuing with wallet change");
+          }
         }
       } catch (e: any) {
         // Check if user rejected the connection
@@ -129,7 +149,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
     if (!keplrPubKey) {
       console.warn('⚠️ No Keplr public key to send to backend');
-      return;
+      return false;
     }
 
     try {
@@ -169,6 +189,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         } else {
           console.log('🔄 Existing investor profile updated');
         }
+        
+        return true;
       } else {
         const errorResult = await response.json();
         console.error('❌ Backend response error:', response.status, response.statusText);
@@ -179,9 +201,12 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
             console.error(`❌ ${error.field}: ${error.message}`);
           });
         }
+        
+        return false;
       }
     } catch (error) {
       console.error('❌ Network error sending to backend:', error);
+      return false;
     }
   };
 

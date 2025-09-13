@@ -254,24 +254,26 @@ const Settings: React.FC = () => {
                   ? 'bg-gray-700 border-gray-600 text-gray-300' 
                   : 'bg-gray-50 border-gray-200 text-gray-700'
               }`}>
-                {profile?.KeplrPublicAddress || keplrAddress || 'Not connected'}
+                {profile?.KeplrPublicAddress || 'Not connected'}
               </div>
-              <button
-                onClick={() => copyToClipboard(profile?.KeplrPublicAddress || keplrAddress || '', 'keplr')}
-                className={`px-3 py-3 rounded-lg flex items-center transition-colors ${
-                  copiedAddress === 'keplr'
-                    ? 'bg-green-500 text-white'
-                    : isDarkMode
-                      ? 'bg-gray-600 hover:bg-gray-500 text-white'
-                      : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                }`}
-              >
-                {copiedAddress === 'keplr' ? (
-                  <CheckCircle className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </button>
+              {profile?.KeplrPublicAddress && (
+                <button
+                  onClick={() => copyToClipboard(profile?.KeplrPublicAddress || '', 'keplr')}
+                  className={`px-3 py-3 rounded-lg flex items-center transition-colors ${
+                    copiedAddress === 'keplr'
+                      ? 'bg-green-500 text-white'
+                      : isDarkMode
+                        ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  }`}
+                >
+                  {copiedAddress === 'keplr' ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
@@ -286,11 +288,11 @@ const Settings: React.FC = () => {
                   ? 'bg-gray-700 border-gray-600 text-gray-300' 
                   : 'bg-gray-50 border-gray-200 text-gray-700'
               }`}>
-                {profile?.namadaWalletAddress || namadaAddress || 'Not linked'}
+                {profile?.namadaWalletAddress || 'Not linked'}
               </div>
-              {(profile?.namadaWalletAddress || namadaAddress) && (
+              {profile?.namadaWalletAddress && (
                 <button
-                  onClick={() => copyToClipboard(profile?.namadaWalletAddress || namadaAddress || '', 'namada')}
+                  onClick={() => copyToClipboard(profile?.namadaWalletAddress || '', 'namada')}
                   className={`px-3 py-3 rounded-lg flex items-center transition-colors ${
                     copiedAddress === 'namada'
                       ? 'bg-green-500 text-white'

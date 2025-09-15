@@ -51,8 +51,10 @@ const Transactions: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'delegate' | 'undelegate' | 'redelegate' | 'claim_rewards'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'pending' | 'failed'>('all');
+  const [chainFilter, setChainFilter] = useState<string>('all');
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showChainDropdown, setShowChainDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const hasInitialized = useRef(false);
 
@@ -82,6 +84,9 @@ const Transactions: React.FC = () => {
       }
       if (statusFilter !== 'all') {
         queryParams.append('status', statusFilter);
+      }
+      if (chainFilter !== 'all') {
+        queryParams.append('chainId', chainFilter);
       }
 
       const apiUrl = `http://localhost:3000/api/transactions/investor/${primaryAddress}?${queryParams}`;
@@ -129,7 +134,7 @@ const Transactions: React.FC = () => {
     }
     
     fetchTransactions(pageToFetch);
-  }, [isConnected, primaryAddress, filter, statusFilter]);
+  }, [isConnected, primaryAddress, filter, statusFilter, chainFilter]);
 
   // Handle page changes separately (only when page changes, not filters)
   useEffect(() => {
@@ -145,6 +150,7 @@ const Transactions: React.FC = () => {
       if (!target.closest('.dropdown-container')) {
         setShowTypeDropdown(false);
         setShowStatusDropdown(false);
+        setShowChainDropdown(false);
       }
     };
 
@@ -167,6 +173,18 @@ const Transactions: React.FC = () => {
       transaction.status.toLowerCase().includes(query)
     );
   });
+
+  // Get unique chains from transactions for the filter dropdown
+  const getUniqueChains = () => {
+    const chains = transactions.reduce((acc: { chainId: string; chainName: string }[], transaction) => {
+      const existingChain = acc.find(chain => chain.chainId === transaction.chainId);
+      if (!existingChain) {
+        acc.push({ chainId: transaction.chainId, chainName: transaction.chainName });
+      }
+      return acc;
+    }, []);
+    return chains.sort((a, b) => a.chainName.localeCompare(b.chainName));
+  };
 
   const getTypeColor = (type: string) => {
     switch (type) {
@@ -305,6 +323,7 @@ const Transactions: React.FC = () => {
                     onClick={() => {
                       setShowTypeDropdown(!showTypeDropdown);
                       setShowStatusDropdown(false);
+                      setShowChainDropdown(false);
                     }}
                     className={`px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors flex items-center gap-2 min-w-[140px] justify-between ${
                       isDarkMode
@@ -354,6 +373,7 @@ const Transactions: React.FC = () => {
                     onClick={() => {
                       setShowStatusDropdown(!showStatusDropdown);
                       setShowTypeDropdown(false);
+                      setShowChainDropdown(false);
                     }}
                     className={`px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors flex items-center gap-2 min-w-[120px] justify-between ${
                       isDarkMode
@@ -408,12 +428,92 @@ const Transactions: React.FC = () => {
                   )}
                 </div>
 
+                {/* Chain Filter Dropdown */}
+                <div className="relative dropdown-container">
+                  <button
+                    onClick={() => {
+                      setShowChainDropdown(!showChainDropdown);
+                      setShowTypeDropdown(false);
+                      setShowStatusDropdown(false);
+                    }}
+                    className={`px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors flex items-center gap-2 min-w-[140px] justify-between ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>
+                      {chainFilter === 'all' 
+                        ? 'All Chains' 
+                        : getUniqueChains().find(chain => chain.chainId === chainFilter)?.chainName || 'Unknown Chain'
+                      }
+                    </span>
+                    <svg className={`w-4 h-4 transition-transform ${showChainDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {showChainDropdown && (
+                    <div className={`absolute top-full right-0 mt-1 w-48 rounded-lg border shadow-xl z-20 max-h-64 overflow-y-auto ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600'
+                        : 'bg-white border-gray-200'
+                    }`}>
+                      <button
+                        onClick={() => {
+                          setChainFilter('all');
+                          setShowChainDropdown(false);
+                        }}
+                        className={`w-full px-4 py-3 text-left text-sm transition-colors first:rounded-t-lg ${
+                          chainFilter === 'all'
+                            ? isDarkMode
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-teal-50 text-teal-700'
+                            : isDarkMode
+                              ? 'text-gray-300 hover:bg-gray-600'
+                              : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        All Chains
+                      </button>
+                      {getUniqueChains().map((chain) => (
+                        <button
+                          key={chain.chainId}
+                          onClick={() => {
+                            setChainFilter(chain.chainId);
+                            setShowChainDropdown(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left text-sm transition-colors last:rounded-b-lg ${
+                            chainFilter === chain.chainId
+                              ? isDarkMode
+                                ? 'bg-teal-600 text-white'
+                                : 'bg-teal-50 text-teal-700'
+                              : isDarkMode
+                                ? 'text-gray-300 hover:bg-gray-600'
+                                : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center">
+                            <span className="font-medium">{chain.chainName}</span>
+                            <span className={`ml-2 text-xs ${
+                              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                            }`}>
+                              {chain.chainId}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Clear Filters Button */}
-                {(filter !== 'all' || statusFilter !== 'all' || searchQuery) && (
+                {(filter !== 'all' || statusFilter !== 'all' || chainFilter !== 'all' || searchQuery) && (
                   <button
                     onClick={() => {
                       setFilter('all');
                       setStatusFilter('all');
+                      setChainFilter('all');
                       setSearchQuery('');
                     }}
                     className={`px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${

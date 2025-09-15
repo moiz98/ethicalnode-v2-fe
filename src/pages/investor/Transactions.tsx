@@ -9,7 +9,7 @@ interface Transaction {
   userPublicAddress: string;
   chainId: string;
   chainName: string;
-  type: 'delegate' | 'undelegate' | 'redelegate' | 'claim_rewards';
+  type: 'delegate' | 'undelegate' | 'redelegate' | 'claim_rewards' | 'cancel_undelegate'; // Added 'cancel_undelegate' type
   amount: string;
   tokenSymbol: string;
   tokenDenom: string;
@@ -178,6 +178,8 @@ const Transactions: React.FC = () => {
         return isDarkMode ? 'text-yellow-400' : 'text-yellow-600';
       case 'claim_rewards':
         return isDarkMode ? 'text-blue-400' : 'text-blue-600';
+      case 'cancel_undelegate':
+        return isDarkMode ? 'text-green-400' : 'text-green-600';
       default:
         return isDarkMode ? 'text-gray-400' : 'text-gray-600';
     }
@@ -193,6 +195,8 @@ const Transactions: React.FC = () => {
         return 'Redelegate';
       case 'claim_rewards':
         return 'Claim Rewards';
+      case 'cancel_undelegate':
+        return 'Cancel Unstake';
       default:
         return type.charAt(0).toUpperCase() + type.slice(1);
     }

@@ -22,11 +22,11 @@ interface HalalScreenerData {
   updatedAt: string;
 }
 
-interface CoinGeckoPriceData {
+interface PriceData {
   [key: string]: {
     usd: number;
     usd_market_cap: number;
-    usd_24h_vol: number;
+    usd_24h_vol?: number;
     usd_24h_change: number;
   };
 }
@@ -34,7 +34,7 @@ interface CoinGeckoPriceData {
 const HalalScreener: React.FC = () => {
   const { isDarkMode } = useTheme();
   const [screeners, setScreeners] = useState<HalalScreenerData[]>([]);
-  const [priceData, setPriceData] = useState<CoinGeckoPriceData>({});
+  const [priceData, setPriceData] = useState<PriceData>({});
   const [loading, setLoading] = useState(true);
   const [priceLoading, setPriceLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +72,7 @@ const HalalScreener: React.FC = () => {
       if (result.success && result.data?.screeners) {
         setScreeners(result.data.screeners);
         // Fetch pricing data after getting screeners
-        await fetchPricingData(result.data.screeners);
+        await fetchPricingData();
       } else {
         throw new Error('No screener data available');
       }
@@ -84,33 +84,47 @@ const HalalScreener: React.FC = () => {
     }
   };
 
-  // Fetch pricing data from CoinGecko
-  const fetchPricingData = async (screenersData: HalalScreenerData[]) => {
+  // Fetch pricing data from backend API
+  const fetchPricingData = async () => {
     try {
       setPriceLoading(true);
       
-      // Extract all unique CoinGecko IDs
-      const coinGeckoIds = screenersData
-        .filter(screener => screener.coinGeckoId && screener.isActive)
-        .map(screener => screener.coinGeckoId)
-        .filter((id, index, array) => array.indexOf(id) === index); // Remove duplicates
+      console.log('Fetching pricing data from backend API...');
+      const response = await fetch('http://localhost:3000/api/investors/prices');
       
-      if (coinGeckoIds.length === 0) {
-        setPriceLoading(false);
-        return;
-      }
-
-      // Create the API URL with all IDs
-      const idsParam = coinGeckoIds.join(',');
-      const apiUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`;
-      
-      const response = await fetch(apiUrl);
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
       
       if (response.ok) {
-        const data = await response.json();
-        setPriceData(data);
+        const result = await response.json();
+        console.log('Pricing API Response:', result);
+        
+        // Handle the actual response structure: data.prices.assets
+        const assets = result.data?.prices?.assets || result.data?.assets;
+        
+        if (result.success && assets?.halalScreener) {
+          // Transform the backend response to match our expected format
+          const transformedPrices: PriceData = {};
+          
+          assets.halalScreener.forEach((asset: any) => {
+            if (asset.coinGeckoId && asset.price) {
+              transformedPrices[asset.coinGeckoId] = {
+                usd: asset.price.usd,
+                usd_market_cap: asset.price.usd_market_cap,
+                usd_24h_change: asset.price.usd_24h_change,
+              };
+            }
+          });
+          
+          setPriceData(transformedPrices);
+          console.log('Transformed pricing data:', transformedPrices);
+        } else {
+          console.warn('No pricing data available from backend');
+          console.log('Result structure:', result);
+        }
       } else {
-        console.error('Failed to fetch pricing data from CoinGecko');
+        const errorText = await response.text();
+        console.error('Failed to fetch pricing data from backend API:', response.status, errorText);
       }
     } catch (error) {
       console.error('Error fetching pricing data:', error);

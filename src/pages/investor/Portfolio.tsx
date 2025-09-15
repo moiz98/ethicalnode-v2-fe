@@ -94,50 +94,62 @@ const convertMinDenomToDisplay = (balance: string, decimals: number): string => 
   }
 };
 
-// Helper function to fetch prices from CoinGecko
-const fetchCoinGeckoPrices = async (coingeckoIds: string[]): Promise<Record<string, number>> => {
+// Helper function to fetch prices from backend API
+const fetchBackendPrices = async (): Promise<Record<string, number>> => {
   try {
-    if (coingeckoIds.length === 0) {
-      console.warn('No CoinGecko IDs provided');
-      return {};
-    }
-
-    const uniqueIds = [...new Set(coingeckoIds.filter(id => id))]; // Remove duplicates and undefined
-    if (uniqueIds.length === 0) {
-      console.warn('No valid CoinGecko IDs found');
-      return {};
-    }
-
-    console.log('Fetching prices for CoinGecko IDs:', uniqueIds);
+    console.log('Fetching prices from backend API...');
     
-    const idsParam = uniqueIds.join(',');
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=usd`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
+    const response = await fetch('http://localhost:3000/api/investors/prices', {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    console.log('Response status:', response.status);
+    console.log('Response ok:', response.ok);
 
     if (!response.ok) {
-      throw new Error(`CoinGecko API error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Backend API error! status: ${response.status}, message: ${errorText}`);
     }
 
-    const pricesData = await response.json();
-    console.log('CoinGecko prices response:', pricesData);
+    const result = await response.json();
+    console.log('Backend prices response:', result);
+
+    // Handle the actual response structure: data.prices.assets
+    const assets = result.data?.prices?.assets || result.data?.assets;
+    
+    if (!result.success || !assets) {
+      console.warn('No pricing data available from backend');
+      console.log('Result structure:', result);
+      return {};
+    }
 
     // Convert to a flat object with coingeckoId as key and USD price as value
     const prices: Record<string, number> = {};
-    for (const [id, data] of Object.entries(pricesData)) {
-      if (data && typeof data === 'object' && 'usd' in data) {
-        prices[id] = (data as { usd: number }).usd;
-      }
+    
+    // Process halal screener assets
+    if (assets.halalScreener) {
+      assets.halalScreener.forEach((asset: any) => {
+        if (asset.coinGeckoId && asset.price?.usd) {
+          prices[asset.coinGeckoId] = asset.price.usd;
+        }
+      });
+    }
+    
+    // Process validator assets (for portfolio)
+    if (assets.validators) {
+      assets.validators.forEach((asset: any) => {
+        if (asset.coinGeckoId && asset.price?.usd) {
+          prices[asset.coinGeckoId] = asset.price.usd;
+        }
+      });
     }
 
+    console.log('Processed prices:', prices);
     return prices;
   } catch (error) {
-    console.error('Error fetching CoinGecko prices:', error);
+    console.error('Error fetching backend prices:', error);
     return {}; // Return empty object on error so the app continues to work
   }
 };
@@ -580,14 +592,14 @@ const InvestorPortfolio: React.FC = () => {
           }
         });
 
-        // Fetch prices from CoinGecko for all assets with coingeckoId
+        // Fetch prices from backend API for all assets with coingeckoId
         const coingeckoIds = processedBalances
           .map(balance => balance.coingeckoId)
           .filter((id): id is string => !!id);
 
         if (coingeckoIds.length > 0) {
           try {
-            const prices = await fetchCoinGeckoPrices(coingeckoIds);
+            const prices = await fetchBackendPrices();
             
             // Update USD prices for each balance
             processedBalances = processedBalances.map(balance => ({
@@ -716,7 +728,7 @@ const InvestorPortfolio: React.FC = () => {
 
       if (allCoingeckoIds.length > 0) {
         try {
-          const prices = await fetchCoinGeckoPrices(allCoingeckoIds);
+          const prices = await fetchBackendPrices();
           console.log('Fetched prices for staked/unstaking assets:', prices);
           
           // Calculate staked and rewards USD values

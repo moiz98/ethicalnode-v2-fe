@@ -13,6 +13,7 @@ if (typeof (globalThis as any).Buffer === 'undefined') {
 
 // Use the inline import for Vite to avoid WebAssembly loading issues
 import { initSdk, getNativeToken } from '@namada/sdk/inline'
+import type { WindowWithNamada } from '@namada/types'
 import BigNumber from 'bignumber.js'
 import { NamadaTxResult } from './types'
 
@@ -28,6 +29,11 @@ interface UnbondProps {
   source: string;
   validator: string;
   amount: BigNumber;
+}
+
+interface ClaimRewardsProps {
+  source: string;
+  validator: string;
 }
 
 interface WithdrawProps {
@@ -181,7 +187,37 @@ export class NamadaSDKIntegration {
   }
 
   /**
-   * Build a withdraw (claim rewards) transaction
+   * Build a claim rewards transaction
+   */
+  async buildClaimRewardsTx(
+    source: string,
+    validator: string,
+    publicKey: string,
+    memo?: string
+  ): Promise<TxProps[]> {
+    if (!this.sdk) await this.init();
+    
+    const wrapperTxProps = this.getWrapperTxProps(publicKey, '150000', memo);
+    
+    const claimProps: ClaimRewardsProps = {
+      source,
+      validator,
+    };
+    
+    // Use the SDK's claim rewards method if available, otherwise fall back to withdraw
+    let claimTx;
+    if (this.sdk.tx.buildClaimRewards) {
+      claimTx = await this.sdk.tx.buildClaimRewards(wrapperTxProps, claimProps);
+    } else {
+      // Fallback to withdraw method if claim rewards not available
+      claimTx = await this.sdk.tx.buildWithdraw(wrapperTxProps, claimProps);
+    }
+    
+    return [claimTx];
+  }
+
+  /**
+   * Build a withdraw (for unbonded assets) transaction
    */
   async buildWithdrawTx(
     source: string,
@@ -210,7 +246,7 @@ export class NamadaSDKIntegration {
     txs: TxProps[],
     owner: string
   ): Promise<Uint8Array[]> {
-    const namada = (window as any).namada;
+    const namada = (window as WindowWithNamada).namada;
     if (!namada) {
       throw new Error('Namada extension not available');
     }
@@ -221,7 +257,7 @@ export class NamadaSDKIntegration {
     }
 
     try {
-      // The signer expects the txs array format
+      // The signer expects the txs array format (same as working docs code)
       const signedTxs = await signer.sign(txs, owner);
       
       if (!signedTxs || signedTxs.length === 0) {

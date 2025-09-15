@@ -2,51 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useWallet } from '../../contexts/WalletContext';
+import { useToast } from '../../contexts/ToastContext';
 import { X, AlertTriangle } from 'lucide-react';
-import { assetLists } from 'chain-registry';
-
-// Helper function to fetch EthicalNode validator addresses from API
-const fetchValidatorAddresses = async (): Promise<Record<string, string>> => {
-  try {
-    console.log('Fetching validator addresses from API...');
-    const response = await fetch('http://localhost:3000/api/validators');
-    
-    if (!response.ok) {
-      throw new Error(`API error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('Validator addresses API response:', result);
-    
-    if (!result.success || !result.data) {
-      throw new Error('Invalid API response format');
-    }
-    
-    // Convert array to object with chainId as key and validatorAddress as value
-    const validatorMap: Record<string, string> = {};
-    result.data.forEach((validator: any) => {
-      console.log('Processing validator:', validator);
-      
-      // Try different possible field names for chainId
-      const chainId = validator.chainId;
-      // Try different possible field names for validator address
-      const validatorAddress = validator.validatorAddress;
-      
-      if (chainId && validatorAddress) {
-        validatorMap[chainId] = validatorAddress;
-        console.log(`Mapped ${chainId} -> ${validatorAddress}`);
-      } else {
-        console.warn('Missing chainId or validatorAddress in validator:', validator);
-      }
-    });
-    
-    console.log('Final validator address map (by chainId):', validatorMap);
-    return validatorMap;
-  } catch (error) {
-    console.error('Error fetching validator addresses:', error);
-    return {}; // Return empty object on error
-  }
-};
+import { assetLists, chains } from 'chain-registry';
+import { Decimal } from '@cosmjs/math';
+import { NamadaWalletManager } from '../../utils/namada';
+import { SigningStargateClient } from '@cosmjs/stargate';
+import { MsgUndelegate } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
+import { MsgWithdrawDelegatorReward } from 'cosmjs-types/cosmos/distribution/v1beta1/tx';
 
 // Helper function to get chain asset data from asset lists
 const getChainAssetData = (chainName: string) => {
@@ -233,9 +196,217 @@ interface PortfolioOverview {
   averageAPR: number;
 }
 
+// Transaction Result Modal Component
+interface TransactionResultModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  success: boolean;
+  txHash?: string;
+  chainName?: string;
+  amount?: string;
+  tokenSymbol?: string;
+  validatorName?: string;
+  errorMessage?: string;
+  transactionType?: 'unstake' | 'claim';
+}
+
+const TransactionResultModal: React.FC<TransactionResultModalProps> = ({
+  isOpen,
+  onClose,
+  success,
+  txHash,
+  chainName,
+  amount,
+  tokenSymbol,
+  validatorName,
+  errorMessage,
+  transactionType
+}) => {
+  const { isDarkMode } = useTheme();
+  const [copied, setCopied] = useState(false);
+
+  const copyTxHash = () => {
+    if (txHash) {
+      navigator.clipboard.writeText(txHash);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const getExplorerUrl = (txHash: string, chainName: string) => {
+    // Map chain names to explorer URLs
+    const explorerUrls: { [key: string]: string } = {
+      'Cosmos Hub': `https://www.mintscan.io/cosmos/txs/${txHash}`,
+      'Akash Network': `https://www.mintscan.io/akash/txs/${txHash}`,
+      'Fetch.ai': `https://www.mintscan.io/fetchai/txs/${txHash}`,
+      'Osmosis': `https://www.mintscan.io/osmosis/txs/${txHash}`,
+      // Add more chains as needed
+    };
+    
+    return explorerUrls[chainName] || `https://www.mintscan.io/cosmos/txs/${txHash}`;
+  };
+
+  const getTransactionTypeText = () => {
+    switch (transactionType) {
+      case 'unstake':
+        return 'Unstaking';
+      case 'claim':
+        return 'Claim Rewards';
+      default:
+        return 'Transaction';
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <motion.div
+        className="fixed inset-0 bg-black bg-opacity-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className={`relative z-50 w-full max-w-md mx-4 rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
+        }`}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-3">
+            {success ? (
+              <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            ) : (
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            )}
+            <div>
+              <h3 className="text-lg font-semibold">
+                {success ? `${getTransactionTypeText()} Successful` : `${getTransactionTypeText()} Failed`}
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {chainName}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-lg hover:${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} transition-colors`}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          {success ? (
+            <>
+              <div className="text-center space-y-2">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Your {getTransactionTypeText().toLowerCase()} transaction has been submitted successfully!
+                </p>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Amount:</span>
+                    <span className="font-medium">{amount} {tokenSymbol}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Validator:</span>
+                    <span className="font-medium">{validatorName}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {txHash && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Transaction Hash:</p>
+                  <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs font-mono">
+                    <span className="flex-1 truncate">{txHash}</span>
+                    <button
+                      onClick={copyTxHash}
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                      title="Copy transaction hash"
+                    >
+                      {copied ? (
+                        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => window.open(getExplorerUrl(txHash, chainName || ''), '_blank')}
+                    className="w-full text-sm text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                  >
+                    View in Explorer →
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center space-y-2">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Your {getTransactionTypeText().toLowerCase()} transaction failed.
+              </p>
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <p className="text-sm text-red-700 dark:text-red-400">
+                  {errorMessage}
+                </p>
+              </div>
+              {amount && tokenSymbol && (
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Attempted Amount:</span>
+                    <span className="font-medium">{amount} {tokenSymbol}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Validator:</span>
+                    <span className="font-medium">{validatorName}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end p-6 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              isDarkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-900'
+            }`}
+          >
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const InvestorPortfolio: React.FC = () => {
   const { isDarkMode } = useTheme();
   const { isConnected, keplrPublicKey, namadaAddress, namadaNotAvailable } = useWallet();
+  const { showToast } = useToast();
 
   // Use Keplr address if available, otherwise use Namada
   const primaryAddress = keplrPublicKey || namadaAddress;
@@ -248,6 +419,20 @@ const InvestorPortfolio: React.FC = () => {
   const [selectedAsset, setSelectedAsset] = useState<StakedAsset | null>(null);
   const [unstakeAmount, setUnstakeAmount] = useState('');
   const [isTransactionInProgress, setIsTransactionInProgress] = useState(false);
+  const [transactionResultModal, setTransactionResultModal] = useState<{
+    isOpen: boolean;
+    success: boolean;
+    txHash?: string;
+    chainName?: string;
+    amount?: string;
+    tokenSymbol?: string;
+    validatorName?: string;
+    errorMessage?: string;
+    transactionType?: 'unstake' | 'claim';
+  }>({
+    isOpen: false,
+    success: false
+  });
   const [overview, setOverview] = useState<PortfolioOverview>({
     totalStakedValue: 0,
     totalPendingRewards: 0,
@@ -260,6 +445,9 @@ const InvestorPortfolio: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const hasInitialized = useRef(false);
   const isRequestInProgress = useRef(false);
+  
+  // Create Namada wallet manager instance
+  const namadaWallet = useRef<NamadaWalletManager | null>(null);
 
   // Action handlers
   const handleUnstake = (asset: StakedAsset) => {
@@ -415,13 +603,9 @@ const InvestorPortfolio: React.FC = () => {
       let processedStakedAssets: StakedAsset[] = [];
       if (stakingResult.success && stakingResult.data?.stakingPositions) {
         const stakingPositions = stakingResult.data.stakingPositions;
-        const { linkedWallets = [] } = stakingResult.data;
         
         processedStakedAssets = stakingPositions.map((position: any, index: number) => {
           const assetData = getChainAssetData(position.chainName);
-          
-          // Find corresponding wallet for this chain
-          const wallet = linkedWallets.find((w: any) => w.chainId === position.chainId);
           
           // Convert amounts from min denom to display format
           const stakedDisplayAmount = convertMinDenomToDisplay(
@@ -446,7 +630,7 @@ const InvestorPortfolio: React.FC = () => {
             stakedAmount: stakedDisplayAmount,
             pendingRewards: rewardsDisplayAmount,
             validatorName: `${position.chainName} Validator`, // Generic name since not provided
-            validatorAddress: wallet?.address || '',
+            validatorAddress: position.validatorAddress || '',
             validatorOperatorAddress: undefined,
             apr: position.validatorAPR || 0,
             unbondingPeriod: unbondingPeriod,
@@ -597,39 +781,560 @@ const InvestorPortfolio: React.FC = () => {
     }
   }, [primaryAddress, keplrPublicKey, namadaAddress]); // Add dependencies for useCallback
 
+  // Function to create transaction record in backend
+  const createTransactionRecord = async (transactionData: {
+    txHash: string;
+    userPublicAddress: string;
+    chainId: string;
+    chainName: string;
+    type: 'undelegate' | 'claim_rewards';
+    amount: string;
+    tokenSymbol: string;
+    tokenDenom: string;
+    validatorAddress: string;
+    status: 'success' | 'failed' | 'pending';
+    errorMessage?: string;
+    rawTx?: any;
+  }) => {
+    try {
+      console.log('=== CREATING TRANSACTION RECORD ===');
+      
+      // Create a serializable version of the transaction data
+      const serializableData = {
+        ...transactionData,
+        // Convert rawTx to a serializable format by removing BigInt values
+        rawTx: transactionData.rawTx ? {
+          transactionHash: transactionData.rawTx.transactionHash,
+          code: transactionData.rawTx.code,
+          height: transactionData.rawTx.height?.toString(), // Convert BigInt to string
+          gasUsed: transactionData.rawTx.gasUsed?.toString(), // Convert BigInt to string
+          gasWanted: transactionData.rawTx.gasWanted?.toString(), // Convert BigInt to string
+          events: transactionData.rawTx.events || [],
+          rawLog: transactionData.rawTx.rawLog || ''
+        } : undefined
+      };
+      
+      console.log('📝 Creating transaction record with data:', JSON.stringify(serializableData, null, 2));
+      console.log('🌐 Making POST request to:', 'http://localhost:3000/api/transactions');
+      
+      const response = await fetch('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(serializableData)
+      });
+
+      console.log('📈 Response status:', response.status);
+      console.log('📊 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      const result = await response.json();
+      console.log('Backend transaction record response:', JSON.stringify(result, null, 2));
+
+      if (!result.success) {
+        console.warn('⚠️ Failed to create transaction record:', result.message);
+        console.warn('Backend errors:', result.errors);
+        // Don't throw error here as the blockchain transaction was successful
+      } else {
+        console.log('✅ Transaction record created successfully!');
+      }
+    } catch (error) {
+      console.error('❌ Error creating transaction record:', error);
+      const err = error as any;
+      console.error('Error details:', {
+        message: err?.message,
+        stack: err?.stack
+      });
+      // Don't throw error here as the blockchain transaction was successful
+    }
+  };
+
+  const closeTransactionResultModal = () => {
+    setTransactionResultModal({
+      isOpen: false,
+      success: false
+    });
+  };
+
   const handleUnstakeSubmit = useCallback(async () => {
     if (!selectedAsset || !unstakeAmount || isTransactionInProgress) return;
     
     try {
       setIsTransactionInProgress(true);
       
-      console.log('Unstake submission:', {
-        amount: unstakeAmount,
-        asset: selectedAsset.asset,
-        chainName: selectedAsset.chainName,
-        chainId: selectedAsset.chainId
-      });
-
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Unstake action for asset:', selectedAsset.asset, 'Amount:', unstakeAmount);
       
-      // Show success message
-      alert(`Unstake request submitted successfully!
-Asset: ${selectedAsset.asset}
-Amount: ${unstakeAmount}
-Chain: ${selectedAsset.chainName}
+      // Check if it's a Namada chain
+      if (selectedAsset.chainName.toLowerCase().includes('namada') || selectedAsset.chainId.includes('namada')) {
+        // Handle Namada transactions
+        if (window.namada) {
+          try {
+            // Initialize Namada wallet manager if not already done
+            if (!namadaWallet.current) {
+              namadaWallet.current = new NamadaWalletManager();
+            }
 
-This feature will be implemented soon.`);
-      
+            // Get working RPC endpoints from backend API for Namada
+            let workingRpc = null;
+            try {
+              console.log('Fetching Namada RPC endpoints from backend for chain:', selectedAsset.chainId);
+              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              
+              if (apiResponse.ok) {
+                const apiData = await apiResponse.json();
+                console.log('Backend API response for Namada RPCs:', apiData);
+                
+                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                  // Test RPC endpoints to find working one
+                  for (const rpcEndpoint of apiData.data.rpc) {
+                    try {
+                      console.log(`Testing Namada RPC endpoint: ${rpcEndpoint.address}`);
+                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                      });
+                      
+                      if (testResponse.ok) {
+                        workingRpc = rpcEndpoint.address;
+                        console.log(`Found working Namada RPC: ${workingRpc}`);
+                        break;
+                      }
+                    } catch (rpcTest) {
+                      console.warn(`Namada RPC ${rpcEndpoint.address} not responding`);
+                      continue;
+                    }
+                  }
+                }
+              }
+            } catch (apiError) {
+              console.warn('Failed to fetch Namada RPC from backend, using fallback:', apiError);
+            }
+
+            // If no working RPC found from backend, use fallback
+            if (!workingRpc) {
+              const fallbackRpc = 'https://namada-mainnet-rpc.mellifera.network:443';
+              try {
+                console.log(`Testing Namada fallback RPC: ${fallbackRpc}`);
+                const testResponse = await fetch(`${fallbackRpc}/status`, {
+                  signal: AbortSignal.timeout(5000) // 5 second timeout
+                });
+                if (testResponse.ok) {
+                  workingRpc = fallbackRpc;
+                  console.log(`Using Namada fallback RPC: ${workingRpc}`);
+                } else {
+                  console.warn('Namada fallback RPC not responding, proceeding anyway');
+                  workingRpc = fallbackRpc; // Use fallback even if test fails
+                }
+              } catch (err) {
+                console.warn(`Namada fallback RPC test failed, using anyway:`, err);
+                workingRpc = fallbackRpc; // Use fallback even if test fails
+              }
+            }
+
+            console.log('Using Namada RPC endpoint:', workingRpc);
+            
+            // Connect to Namada wallet
+            const connected = await namadaWallet.current.connect(selectedAsset.chainId, workingRpc);
+            if (!connected) {
+              throw new Error('Failed to connect to Namada wallet');
+            }
+
+            const userAddress = namadaWallet.current.getAddress();
+            console.log('Connected Namada address:', userAddress);
+
+            // Convert amount from display units to smallest denomination
+            // unstakeAmount is in NAM, need to convert to namnam (1 NAM = 1,000,000 namnam)
+            const amountInNamnam = (parseFloat(unstakeAmount) * 1000000).toString();
+            
+            console.log('Initiating Namada unstake transaction...');
+            console.log('Validator:', selectedAsset.validatorAddress);
+            console.log('Amount:', amountInNamnam, 'namnam');
+
+            // Show wallet prompt notification
+            showToast({
+              type: 'info',
+              title: 'Wallet Action Required',
+              message: 'Please confirm the unstake transaction in your Namada wallet...',
+              duration: 8000
+            });
+
+            // Undelegate tokens using the Namada wallet manager
+            const result = await namadaWallet.current.undelegate(
+              selectedAsset.validatorAddress,
+              amountInNamnam,
+              workingRpc,
+              `Unstaking ${unstakeAmount} NAM via EthicalNode`
+            );
+
+            console.log('Namada transaction result:', result);
+
+            // Create transaction record in backend
+            await createTransactionRecord({
+              txHash: result.hash || '',
+              userPublicAddress: userAddress,
+              chainId: selectedAsset.chainId,
+              chainName: selectedAsset.chainName,
+              type: 'undelegate',
+              amount: amountInNamnam,
+              tokenSymbol: 'NAM',
+              tokenDenom: 'nam',
+              validatorAddress: selectedAsset.validatorAddress,
+              status: 'success',
+              rawTx: result
+            });
+
+            console.log('Namada unstaking transaction completed successfully!');
+            setShowUnstakeModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: true,
+              txHash: result.hash,
+              chainName: selectedAsset.chainName,
+              amount: unstakeAmount,
+              tokenSymbol: 'NAM',
+              validatorName: selectedAsset.validatorName,
+              transactionType: 'unstake'
+            });
+
+            // Show success toast
+            showToast({
+              type: 'success',
+              title: 'Unstaking Successful!',
+              message: `Successfully unstaked ${unstakeAmount} NAM from ${selectedAsset.validatorName}`
+            });
+
+          } catch (error: any) {
+            console.error('Namada transaction failed:', error);
+            setShowUnstakeModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: unstakeAmount,
+              tokenSymbol: 'NAM',
+              validatorName: selectedAsset.validatorName,
+              errorMessage: error.message || 'Namada transaction failed. Please try again or check your wallet connection.',
+              transactionType: 'unstake'
+            });
+
+            // Show error toast
+            showToast({
+              type: 'error',
+              title: 'Unstaking Failed',
+              message: error.message || 'Transaction failed. Please try again.'
+            });
+          }
+        } else {
+          setShowUnstakeModal(false);
+          setTransactionResultModal({
+            isOpen: true,
+            success: false,
+            chainName: selectedAsset.chainName,
+            amount: unstakeAmount,
+            tokenSymbol: 'NAM',
+            validatorName: selectedAsset.validatorName,
+            errorMessage: 'Please install Namada wallet extension to unstake from Namada network.',
+            transactionType: 'unstake'
+          });
+        }
+      } else {
+        // Handle Cosmos chains with Keplr using Amino signing for better UX
+        if (window.keplr) {
+          // Get chain registry data for gas and denomination info (outside try-catch for error handling access)
+          const chainRegistryData = assetLists.find(a => a.chainName === selectedAsset.chainName);
+          const chainData = chains.find(c => c.chainName === selectedAsset.chainName);
+          
+          if (!chainRegistryData || !chainData) {
+            setShowUnstakeModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: unstakeAmount,
+              tokenSymbol: 'TOKEN',
+              validatorName: selectedAsset.validatorName,
+              errorMessage: 'This chain is not yet supported for unstaking.',
+              transactionType: 'unstake'
+            });
+            return;
+          }
+          
+          const stakeCurrency = chainRegistryData.assets[0];
+          
+          try {
+            // Enable the chain
+            await window.keplr.enable([selectedAsset.chainId]);
+            
+            const baseDenom = stakeCurrency.base;
+            const exponent = stakeCurrency.denomUnits?.find(unit => unit.denom === stakeCurrency.display)?.exponent || 6;
+            
+            // Convert amount from display units to base units
+            const amountInBaseUnits = Decimal.fromUserInput(unstakeAmount, exponent).atomics;
+
+            // Calculate gas fee using chain registry data
+            let gasAmount = "600000"; // Standard gas limit for delegation
+            let feeAmount = "3600"; // Default fallback
+            
+            // Get fee information from chain data
+            if (chainData.fees && chainData.fees.feeTokens && chainData.fees.feeTokens.length > 0) {
+              const feeToken = chainData.fees.feeTokens.find(token => token.denom === baseDenom) || chainData.fees.feeTokens[0];
+              
+              if (feeToken) {
+                // Use average gas price if available, otherwise use fixed min gas price
+                let gasPrice = feeToken.averageGasPrice || feeToken.fixedMinGasPrice || feeToken.lowGasPrice || 0.005;
+                
+                // Calculate fee amount based on gas limit and gas price
+                // Gas price is usually in display units, so convert to base units
+                const feeInBaseUnits = Math.ceil(parseInt(gasAmount) * gasPrice);
+                feeAmount = feeInBaseUnits.toString();
+                
+                console.log(`Using chain registry fee data for ${selectedAsset.chainName}:`, {
+                  gasPrice,
+                  gasAmount,
+                  feeAmount,
+                  baseDenom,
+                  exponent,
+                  feeToken
+                });
+              }
+            }
+            
+            // Get additional gas limit from chain data if available
+            if (chainData.staking && chainData.staking.stakingTokens && chainData.staking.stakingTokens.length > 0) {
+              const unstakingToken = chainData.staking.stakingTokens.find(token => token.denom === baseDenom);
+              if (unstakingToken) {
+                console.log('Found unstaking token data:', unstakingToken);
+              }
+            }
+
+            const fee = {
+              gas: gasAmount,
+              amount: [{
+                denom: baseDenom,
+                amount: feeAmount
+              }]
+            };
+
+            // Get working RPC endpoints from backend API (silently)
+            let workingRpc = null;
+            try {
+              console.log('Fetching RPC endpoints from backend for chain:', selectedAsset.chainId);
+              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              
+              if (apiResponse.ok) {
+                const apiData = await apiResponse.json();
+                console.log('Backend API response for RPCs:', apiData);
+                
+                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                  // Test RPC endpoints to find working one (silently)
+                  for (const rpcEndpoint of apiData.data.rpc) {
+                    try {
+                      console.log(`Testing RPC endpoint: ${rpcEndpoint.address}`);
+                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                      });
+                      
+                      if (testResponse.ok) {
+                        workingRpc = rpcEndpoint.address;
+                        console.log(`Found working RPC: ${workingRpc}`);
+                        break;
+                      }
+                    } catch (rpcTest) {
+                      console.warn(`RPC ${rpcEndpoint.address} not responding`);
+                      continue;
+                    }
+                  }
+                }
+              }
+            } catch (apiError) {
+              console.warn('Failed to fetch RPC from backend, using fallbacks:', apiError);
+            }
+
+            // If no working RPC found from backend, use fallbacks (silently)
+            if (!workingRpc) {
+              const fallbackRpcs = [
+                `https://rpc-cosmoshub.blockapsis.com`,
+                `https://cosmos-rpc.polkachu.com`,
+                `https://rpc.cosmos.network`,
+                `https://cosmoshub.validator.network/rpc`
+              ];
+              
+              for (const fallbackRpc of fallbackRpcs) {
+                try {
+                  console.log(`Testing fallback RPC: ${fallbackRpc}`);
+                  const testResponse = await fetch(`${fallbackRpc}/status`, {
+                    signal: AbortSignal.timeout(5000) // 5 second timeout
+                  });
+                  if (testResponse.ok) {
+                    workingRpc = fallbackRpc;
+                    console.log(`Found working fallback RPC: ${workingRpc}`);
+                    break;
+                  }
+                } catch (err) {
+                  console.warn(`Fallback RPC ${fallbackRpc} failed:`, err);
+                  continue;
+                }
+              }
+            }
+
+            console.log('Using RPC endpoint:', workingRpc);
+
+            // Show wallet prompt notification
+            showToast({
+              type: 'info',
+              title: 'Wallet Action Required',
+              message: 'Please confirm the transaction in your Keplr wallet...',
+              duration: 8000 // Keep it longer since user needs time to sign
+            });
+
+            // Get offline signer for transaction signing
+            const offlineSigner = window.keplr.getOfflineSigner(selectedAsset.chainId);
+            const accounts = await offlineSigner.getAccounts();
+            
+            if (!accounts || accounts.length === 0) {
+              throw new Error('No accounts found in Keplr wallet');
+            }
+
+            const signerAddress = accounts[0].address;
+            console.log('Signer address:', signerAddress);
+
+             // Use CosmJS SigningStargateClient for proper delegation (recommended approach)
+            if (!workingRpc) {
+              throw new Error('No working RPC endpoint available for broadcasting');
+            }
+
+            console.log('Using SigningStargateClient to delegate tokens...');
+            
+            // Connect signing client to RPC endpoint
+            const client = await SigningStargateClient.connectWithSigner(
+              workingRpc,
+              offlineSigner as any // Cast to any to avoid TypeScript issues with Keplr's signer
+            );
+            // Create coin object for delegation
+            const coin = {
+              denom: baseDenom,
+              amount: amountInBaseUnits
+            };
+
+            console.log('UnDelegating tokens:', {
+              delegator: signerAddress,
+              validator: selectedAsset.validatorAddress,
+              amount: coin,
+              fee: fee
+            });
+
+            // Create the unstake message
+            const unstakeMsg = {
+              typeUrl: '/cosmos.staking.v1beta1.MsgUndelegate',
+              value: MsgUndelegate.fromPartial({
+                delegatorAddress: signerAddress,
+                validatorAddress: selectedAsset.validatorAddress,
+                amount: {
+                  denom: coin.denom,
+                  amount: coin.amount,
+                },
+              }),
+            };
+
+            // Send transaction
+            const result = await client.signAndBroadcast(signerAddress, [unstakeMsg], fee, `Unstaking ${unstakeAmount} ${stakeCurrency.symbol} via EthicalNode`);
+
+            console.log('Cosmos unstake transaction result:', result);
+            
+            if (result.code !== undefined && result.code !== 0) {
+              throw new Error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
+            }
+
+            // Create transaction record in backend
+            await createTransactionRecord({
+              txHash: result.transactionHash,
+              userPublicAddress: signerAddress,
+              chainId: selectedAsset.chainId,
+              chainName: selectedAsset.chainName,
+              type: 'undelegate',
+              amount: amountInBaseUnits,
+              tokenSymbol: stakeCurrency.symbol || selectedAsset.asset,
+              tokenDenom: baseDenom,
+              validatorAddress: selectedAsset.validatorAddress,
+              status: 'success',
+              rawTx: result
+            });
+
+            console.log('Cosmos unstaking transaction completed successfully!');
+            setShowUnstakeModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: true,
+              txHash: result.transactionHash,
+              chainName: selectedAsset.chainName,
+              amount: unstakeAmount,
+              tokenSymbol: stakeCurrency.symbol || selectedAsset.asset,
+              validatorName: selectedAsset.validatorName,
+              transactionType: 'unstake'
+            });
+
+            // Show success toast
+            showToast({
+              type: 'success',
+              title: 'Unstaking Successful!',
+              message: `Successfully unstaked ${unstakeAmount} ${stakeCurrency.symbol} from ${selectedAsset.validatorName}`
+            });
+
+          } catch (error: any) {
+            console.error('Cosmos unstaking transaction failed:', error);
+            setShowUnstakeModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: unstakeAmount,
+              tokenSymbol: stakeCurrency?.symbol || selectedAsset.asset,
+              validatorName: selectedAsset.validatorName,
+              errorMessage: error.message || 'Transaction failed. Please try again.',
+              transactionType: 'unstake'
+            });
+
+            // Show error toast
+            showToast({
+              type: 'error',
+              title: 'Unstaking Failed',
+              message: error.message || 'Transaction failed. Please try again.'
+            });
+          }
+        } else {
+          setShowUnstakeModal(false);
+          setTransactionResultModal({
+            isOpen: true,
+            success: false,
+            chainName: selectedAsset.chainName,
+            amount: unstakeAmount,
+            tokenSymbol: selectedAsset.asset,
+            validatorName: selectedAsset.validatorName,
+            errorMessage: 'Please install Keplr wallet extension to unstake from Cosmos networks.',
+            transactionType: 'unstake'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Unstaking transaction failed:', error);
       setShowUnstakeModal(false);
-      
-    } catch (error: any) {
-      console.error('Unstake submission error:', error);
-      alert(`Failed to submit unstake request: ${error.message}`);
+      setTransactionResultModal({
+        isOpen: true,
+        success: false,
+        chainName: selectedAsset?.chainName || 'Unknown',
+        amount: unstakeAmount,
+        tokenSymbol: selectedAsset?.asset || 'TOKEN',
+        validatorName: selectedAsset?.validatorName || 'Unknown',
+        errorMessage: 'An unexpected error occurred. Please try again.',
+        transactionType: 'unstake'
+      });
     } finally {
       setIsTransactionInProgress(false);
     }
-  }, [selectedAsset, unstakeAmount, isTransactionInProgress]);
+  }, [selectedAsset, unstakeAmount, isTransactionInProgress, showToast, namadaWallet, createTransactionRecord, setTransactionResultModal]);
 
   const handleClaimRewardsSubmit = useCallback(async () => {
     if (!selectedAsset || isTransactionInProgress) return;
@@ -637,33 +1342,498 @@ This feature will be implemented soon.`);
     try {
       setIsTransactionInProgress(true);
       
-      console.log('Claim rewards submission:', {
-        amount: selectedAsset.pendingRewards,
-        asset: selectedAsset.asset,
-        chainName: selectedAsset.chainName,
-        chainId: selectedAsset.chainId
-      });
-
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Claim rewards action for asset:', selectedAsset.asset, 'Amount:', selectedAsset.pendingRewards);
       
-      // Show success message
-      alert(`Claim rewards request submitted successfully!
-Asset: ${selectedAsset.asset}
-Rewards: ${selectedAsset.pendingRewards}
-Chain: ${selectedAsset.chainName}
+      // Check if it's a Namada chain
+      if (selectedAsset.chainName.toLowerCase().includes('namada') || selectedAsset.chainId.includes('namada')) {
+        // Handle Namada transactions
+        if (window.namada) {
+          try {
+            // Add debugging to check Namada extension
+            console.log('=== NAMADA CLAIM REWARDS DEBUG ===');
+            console.log('window.namada exists:', !!window.namada);
+            if (window.namada) {
+              console.log('Namada extension methods:', Object.keys(window.namada));
+              console.log('Namada extension object:', window.namada);
+            }
+            console.log('====================');
 
-This feature will be implemented soon.`);
-      
+            // Initialize Namada wallet manager if not already done
+            if (!namadaWallet.current) {
+              namadaWallet.current = new NamadaWalletManager();
+            }
+
+            // Get working RPC endpoints from backend API for Namada
+            let workingRpc = null;
+            try {
+              console.log('Fetching Namada RPC endpoints from backend for chain:', selectedAsset.chainId);
+              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              
+              if (apiResponse.ok) {
+                const apiData = await apiResponse.json();
+                console.log('Backend API response for Namada RPCs:', apiData);
+                
+                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                  // Test RPC endpoints to find working one
+                  for (const rpcEndpoint of apiData.data.rpc) {
+                    try {
+                      console.log(`Testing Namada RPC endpoint: ${rpcEndpoint.address}`);
+                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                      });
+                      
+                      if (testResponse.ok) {
+                        workingRpc = rpcEndpoint.address;
+                        console.log(`Found working Namada RPC: ${workingRpc}`);
+                        break;
+                      }
+                    } catch (rpcTest) {
+                      console.warn(`Namada RPC ${rpcEndpoint.address} not responding`);
+                      continue;
+                    }
+                  }
+                }
+              }
+            } catch (apiError) {
+              console.warn('Failed to fetch Namada RPC from backend, using fallback:', apiError);
+            }
+
+            // If no working RPC found from backend, use fallback
+            if (!workingRpc) {
+              const fallbackRpc = 'https://namada-mainnet-rpc.mellifera.network:443';
+              try {
+                console.log(`Testing Namada fallback RPC: ${fallbackRpc}`);
+                const testResponse = await fetch(`${fallbackRpc}/status`, {
+                  signal: AbortSignal.timeout(5000) // 5 second timeout
+                });
+                if (testResponse.ok) {
+                  workingRpc = fallbackRpc;
+                  console.log(`Using Namada fallback RPC: ${workingRpc}`);
+                } else {
+                  console.warn('Namada fallback RPC not responding, proceeding anyway');
+                  workingRpc = fallbackRpc; // Use fallback even if test fails
+                }
+              } catch (err) {
+                console.warn(`Namada fallback RPC test failed, using anyway:`, err);
+                workingRpc = fallbackRpc; // Use fallback even if test fails
+              }
+            }
+
+            console.log('Using Namada RPC endpoint:', workingRpc);
+            
+            // Connect to Namada wallet
+            const connected = await namadaWallet.current.connect(selectedAsset.chainId, workingRpc);
+            if (!connected) {
+              throw new Error('Failed to connect to Namada wallet');
+            }
+
+            const userAddress = namadaWallet.current.getAddress();
+            console.log('Connected Namada address:', userAddress);
+
+            console.log('Initiating Namada claim rewards transaction...');
+            console.log('Validator:', selectedAsset.validatorAddress);
+            console.log('Rewards:', selectedAsset.pendingRewards, 'NAM');
+
+            // Show wallet prompt notification
+            showToast({
+              type: 'info',
+              title: 'Wallet Action Required',
+              message: 'Please confirm the claim rewards transaction in your Namada wallet...',
+              duration: 8000
+            });
+
+            // Claim rewards using the Namada wallet manager
+            const result = await namadaWallet.current.claimRewards(
+              selectedAsset.validatorAddress,
+              workingRpc,
+              `Claiming rewards via EthicalNode`
+            );
+
+            console.log('Namada transaction result:', result);
+            // convert amount from nam to namnam for record
+            const claimedAmountInNAMnam = (parseFloat(selectedAsset.pendingRewards) * 1000000).toString();
+
+            // Create transaction record in backend
+            await createTransactionRecord({
+              txHash: result.hash || '',
+              userPublicAddress: userAddress,
+              chainId: selectedAsset.chainId,
+              chainName: selectedAsset.chainName,
+              type: 'claim_rewards',
+              amount: claimedAmountInNAMnam,
+              tokenSymbol: 'NAM',
+              tokenDenom: 'nam',
+              validatorAddress: selectedAsset.validatorAddress,
+              status: 'success',
+              rawTx: result
+            });
+
+            console.log('Namada claim rewards transaction completed successfully!');
+            setShowClaimRewardsModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: true,
+              txHash: result.hash,
+              chainName: selectedAsset.chainName,
+              amount: selectedAsset.pendingRewards,
+              tokenSymbol: 'NAM',
+              validatorName: selectedAsset.validatorName,
+              transactionType: 'claim'
+            });
+
+            // Show success toast
+            showToast({
+              type: 'success',
+              title: 'Claim Rewards Successful!',
+              message: `Successfully claimed ${selectedAsset.pendingRewards} NAM rewards from ${selectedAsset.validatorName}`
+            });
+
+          } catch (error: any) {
+            console.error('Namada transaction failed:', error);
+            
+            // Check for specific error messages and provide user-friendly explanations
+            let userFriendlyMessage = error.message || 'Namada transaction failed. Please try again or check your wallet connection.';
+            
+            if (error.message && error.message.includes('no unbonded bonds ready to withdraw')) {
+              userFriendlyMessage = `No rewards are currently available to claim for this epoch. 
+
+In Namada, rewards are epoch-based and may require specific conditions:
+• Rewards may only be claimable after certain epochs have passed
+• Some validators require bonds to be unbonded before claiming rewards  
+• The rewards shown (${selectedAsset.pendingRewards} NAM) represent accumulated rewards that may become available in future epochs
+
+Please try again later or check with the validator for specific requirements.`;
+            } else if (error.message && error.message.includes('current epoch')) {
+              userFriendlyMessage = `Rewards are not yet available for withdrawal in the current epoch. 
+
+Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pendingRewards} NAM) may become available for withdrawal in upcoming epochs. Please wait for the next epoch and try again.`;
+            }
+            
+            setShowClaimRewardsModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: selectedAsset.pendingRewards,
+              tokenSymbol: 'NAM',
+              validatorName: selectedAsset.validatorName,
+              errorMessage: userFriendlyMessage,
+              transactionType: 'claim'
+            });
+
+            // Show error toast
+            showToast({
+              type: 'error',
+              title: 'Claim Rewards Failed',
+              message: error.message || 'Transaction failed. Please try again.'
+            });
+          }
+        } else {
+          setShowClaimRewardsModal(false);
+          setTransactionResultModal({
+            isOpen: true,
+            success: false,
+            chainName: selectedAsset.chainName,
+            amount: selectedAsset.pendingRewards,
+            tokenSymbol: 'NAM',
+            validatorName: selectedAsset.validatorName,
+            errorMessage: 'Please install Namada wallet extension to claim rewards from Namada network.',
+            transactionType: 'claim'
+          });
+        }
+      } else {
+        // Handle Cosmos chains with Keplr
+        if (window.keplr) {
+          // Get chain registry data for gas and denomination info
+          const chainRegistryData = assetLists.find(a => a.chainName === selectedAsset.chainName);
+          const chainData = chains.find(c => c.chainName === selectedAsset.chainName);
+          
+          if (!chainRegistryData || !chainData) {
+            setShowClaimRewardsModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: selectedAsset.pendingRewards,
+              tokenSymbol: 'TOKEN',
+              validatorName: selectedAsset.validatorName,
+              errorMessage: 'This chain is not yet supported for claiming rewards.',
+              transactionType: 'claim'
+            });
+            return;
+          }
+          
+          const stakeCurrency = chainRegistryData.assets[0];
+          
+          try {
+            // Enable the chain
+            await window.keplr.enable([selectedAsset.chainId]);
+            console.log('Chain data found:', {
+              chainName: selectedAsset.chainName,
+              chainData: chainData,
+              assetData: chainRegistryData
+            });
+            
+            const baseDenom = stakeCurrency.base;
+            const exponent = stakeCurrency.denomUnits?.find(unit => unit.denom === stakeCurrency.display)?.exponent || 6;
+            
+            // Convert amount from display units to base units
+            const amountInBaseUnits = Decimal.fromUserInput(selectedAsset.pendingRewards, exponent).atomics;
+
+            // Calculate gas fee using chain registry data
+            let gasAmount = "600000"; // Standard gas limit for delegation
+            let feeAmount = "3600"; // Default fallback
+            
+            // Get fee information from chain data
+            if (chainData.fees && chainData.fees.feeTokens && chainData.fees.feeTokens.length > 0) {
+              const feeToken = chainData.fees.feeTokens.find(token => token.denom === baseDenom) || chainData.fees.feeTokens[0];
+              
+              if (feeToken) {
+                // Use average gas price if available, otherwise use fixed min gas price
+                let gasPrice = feeToken.averageGasPrice || feeToken.fixedMinGasPrice || feeToken.lowGasPrice || 0.005;
+                
+                // Calculate fee amount based on gas limit and gas price
+                // Gas price is usually in display units, so convert to base units
+                const feeInBaseUnits = Math.ceil(parseInt(gasAmount) * gasPrice);
+                feeAmount = feeInBaseUnits.toString();
+                
+                console.log(`Using chain registry fee data for ${selectedAsset.chainName}:`, {
+                  gasPrice,
+                  gasAmount,
+                  feeAmount,
+                  baseDenom,
+                  exponent,
+                  feeToken
+                });
+              }
+            }
+            
+            // Get additional gas limit from chain data if available
+            if (chainData.staking && chainData.staking.stakingTokens && chainData.staking.stakingTokens.length > 0) {
+              const stakingToken = chainData.staking.stakingTokens.find(token => token.denom === baseDenom);
+              if (stakingToken) {
+                console.log('Found staking token data:', stakingToken);
+              }
+            }
+
+            const fee = {
+              gas: gasAmount,
+              amount: [{
+                denom: baseDenom,
+                amount: feeAmount
+              }]
+            };
+
+            // Get working RPC endpoints from backend API (silently)
+            let workingRpc = null;
+            try {
+              console.log('Fetching RPC endpoints from backend for chain:', selectedAsset.chainId);
+              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              
+              if (apiResponse.ok) {
+                const apiData = await apiResponse.json();
+                console.log('Backend API response for RPCs:', apiData);
+                
+                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                  // Test RPC endpoints to find working one (silently)
+                  for (const rpcEndpoint of apiData.data.rpc) {
+                    try {
+                      console.log(`Testing RPC endpoint: ${rpcEndpoint.address}`);
+                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                      });
+                      
+                      if (testResponse.ok) {
+                        workingRpc = rpcEndpoint.address;
+                        console.log(`Found working RPC: ${workingRpc}`);
+                        break;
+                      }
+                    } catch (rpcTest) {
+                      console.warn(`RPC ${rpcEndpoint.address} not responding`);
+                      continue;
+                    }
+                  }
+                }
+              }
+            } catch (apiError) {
+              console.warn('Failed to fetch RPC from backend, using fallbacks:', apiError);
+            }
+
+            // If no working RPC found from backend, use fallbacks (silently)
+            if (!workingRpc) {
+              const fallbackRpcs = [
+                `https://rpc-cosmoshub.blockapsis.com`,
+                `https://cosmos-rpc.polkachu.com`,
+                `https://rpc.cosmos.network`,
+                `https://cosmoshub.validator.network/rpc`
+              ];
+              
+              for (const fallbackRpc of fallbackRpcs) {
+                try {
+                  console.log(`Testing fallback RPC: ${fallbackRpc}`);
+                  const testResponse = await fetch(`${fallbackRpc}/status`, {
+                    signal: AbortSignal.timeout(5000) // 5 second timeout
+                  });
+                  if (testResponse.ok) {
+                    workingRpc = fallbackRpc;
+                    console.log(`Found working fallback RPC: ${workingRpc}`);
+                    break;
+                  }
+                } catch (err) {
+                  console.warn(`Fallback RPC ${fallbackRpc} failed:`, err);
+                  continue;
+                }
+              }
+            }
+
+            console.log('Using RPC endpoint:', workingRpc);
+
+            // Show wallet prompt notification
+            showToast({
+              type: 'info',
+              title: 'Wallet Action Required',
+              message: 'Please confirm the transaction in your Keplr wallet...',
+              duration: 8000 // Keep it longer since user needs time to sign
+            });
+
+            // Get offline signer for transaction signing
+            const offlineSigner = window.keplr.getOfflineSigner(selectedAsset.chainId);
+            const accounts = await offlineSigner.getAccounts();
+            
+            if (!accounts || accounts.length === 0) {
+              throw new Error('No accounts found in Keplr wallet');
+            }
+
+            const signerAddress = accounts[0].address;
+            console.log('Signer address:', signerAddress);
+
+            // Use CosmJS SigningStargateClient for proper delegation (recommended approach)
+            if (!workingRpc) {
+              throw new Error('No working RPC endpoint available for broadcasting');
+            }
+
+            console.log('Using SigningStargateClient to delegate tokens...');
+            
+            // Connect signing client to RPC endpoint
+            const client = await SigningStargateClient.connectWithSigner(
+              workingRpc,
+              offlineSigner as any // Cast to any to avoid TypeScript issues with Keplr's signer
+            );
+            
+            console.log('Claim rewards details:', {
+              signerAddress,
+              validatorAddress: selectedAsset.validatorAddress,
+              symbol: stakeCurrency.symbol
+            });
+
+            // Create the claim rewards message
+            const claimMsg = {
+              typeUrl: '/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward',
+              value: MsgWithdrawDelegatorReward.fromPartial({
+                delegatorAddress: signerAddress,
+                validatorAddress: selectedAsset.validatorAddress,
+              }),
+            };
+
+            // Send transaction
+            const result = await client.signAndBroadcast(signerAddress, [claimMsg], fee, `Claiming rewards via EthicalNode`);
+
+            console.log('Cosmos claim rewards transaction result:', result);
+            
+            if (result.code !== undefined && result.code !== 0) {
+              throw new Error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
+            }
+            // Create transaction record in backend
+            await createTransactionRecord({
+              txHash: result.transactionHash,
+              userPublicAddress: signerAddress,
+              chainId: selectedAsset.chainId,
+              chainName: selectedAsset.chainName,
+              type: 'claim_rewards',
+              amount: amountInBaseUnits,
+              tokenSymbol: stakeCurrency.symbol || selectedAsset.asset,
+              tokenDenom: baseDenom,
+              validatorAddress: selectedAsset.validatorAddress,
+              status: 'success',
+              rawTx: result
+            });
+
+            console.log('Cosmos claim rewards transaction completed successfully!');
+            setShowClaimRewardsModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: true,
+              txHash: result.transactionHash,
+              chainName: selectedAsset.chainName,
+              amount: selectedAsset.pendingRewards,
+              tokenSymbol: stakeCurrency.symbol || selectedAsset.asset,
+              validatorName: selectedAsset.validatorName,
+              transactionType: 'claim'
+            });
+
+            // Show success toast
+            showToast({
+              type: 'success',
+              title: 'Claim Rewards Successful!',
+              message: `Successfully claimed ${selectedAsset.pendingRewards} ${stakeCurrency.symbol} rewards from ${selectedAsset.validatorName}`
+            });
+
+          } catch (error: any) {
+            console.error('Cosmos claim rewards transaction failed:', error);
+            setShowClaimRewardsModal(false);
+            setTransactionResultModal({
+              isOpen: true,
+              success: false,
+              chainName: selectedAsset.chainName,
+              amount: selectedAsset.pendingRewards,
+              tokenSymbol: stakeCurrency?.symbol || selectedAsset.asset,
+              validatorName: selectedAsset.validatorName,
+              errorMessage: error.message || 'Transaction failed. Please try again.',
+              transactionType: 'claim'
+            });
+
+            // Show error toast
+            showToast({
+              type: 'error',
+              title: 'Claim Rewards Failed',
+              message: error.message || 'Transaction failed. Please try again.'
+            });
+          }
+        } else {
+          setShowClaimRewardsModal(false);
+          setTransactionResultModal({
+            isOpen: true,
+            success: false,
+            chainName: selectedAsset.chainName,
+            amount: selectedAsset.pendingRewards,
+            tokenSymbol: selectedAsset.asset,
+            validatorName: selectedAsset.validatorName,
+            errorMessage: 'Please install Keplr wallet extension to claim rewards from Cosmos networks.',
+            transactionType: 'claim'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Claim rewards transaction failed:', error);
       setShowClaimRewardsModal(false);
-      
-    } catch (error: any) {
-      console.error('Claim rewards submission error:', error);
-      alert(`Failed to submit claim rewards request: ${error.message}`);
+      setTransactionResultModal({
+        isOpen: true,
+        success: false,
+        chainName: selectedAsset?.chainName || 'Unknown',
+        amount: selectedAsset?.pendingRewards || '0',
+        tokenSymbol: selectedAsset?.asset || 'TOKEN',
+        validatorName: selectedAsset?.validatorName || 'Unknown',
+        errorMessage: 'An unexpected error occurred. Please try again.',
+        transactionType: 'claim'
+      });
     } finally {
       setIsTransactionInProgress(false);
     }
-  }, [selectedAsset, isTransactionInProgress]);
+  }, [selectedAsset, isTransactionInProgress, showToast, namadaWallet, createTransactionRecord, setTransactionResultModal]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -1551,6 +2721,12 @@ This feature will be implemented soon.`);
                   Claiming rewards will initiate a transaction through your {selectedAsset.chainName === 'namada' ? 'Namada' : 'Keplr'} wallet extension. 
                   Please confirm the transaction when prompted.
                 </p>
+                {selectedAsset.chainName.toLowerCase().includes('namada') && (
+                  <p className={`text-xs mt-2 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                    <strong>Note:</strong> Namada uses epoch-based rewards. If no rewards are available to claim, 
+                    they may become available in upcoming epochs.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1590,6 +2766,20 @@ This feature will be implemented soon.`);
           </motion.div>
         </div>
       )}
+
+      {/* Transaction Result Modal */}
+      <TransactionResultModal
+        isOpen={transactionResultModal.isOpen}
+        onClose={closeTransactionResultModal}
+        success={transactionResultModal.success}
+        txHash={transactionResultModal.txHash}
+        chainName={transactionResultModal.chainName}
+        amount={transactionResultModal.amount}
+        tokenSymbol={transactionResultModal.tokenSymbol}
+        validatorName={transactionResultModal.validatorName}
+        errorMessage={transactionResultModal.errorMessage}
+        transactionType={transactionResultModal.transactionType}
+      />
     </div>
   );
 };

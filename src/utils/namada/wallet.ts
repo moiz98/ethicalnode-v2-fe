@@ -297,6 +297,364 @@ export class NamadaWalletManager {
   }
 
   /**
+   * Undelegate (unstake) tokens from a validator with transaction recording
+   */
+  async undelegate(
+    validatorAddress: string,
+    amount: string,
+    rpcUrl: string,
+    memo: string = ''
+  ): Promise<NamadaTxResult> {
+    if (!this.connected || !window.namada) {
+      throw new Error('Namada wallet not connected');
+    }
+
+    // Initialize SDK lazily if not already initialized
+    if (!this.sdkIntegration) {
+      try {
+        console.log('Initializing Namada SDK for unstake transaction...');
+        this.sdkIntegration = new NamadaSDKIntegration(rpcUrl, this.chainId);
+        await this.sdkIntegration.init();
+        console.log('Namada SDK initialized for unstake transaction');
+      } catch (error: any) {
+        console.error('Failed to initialize SDK:', error);
+        
+        // Provide a simple error message
+        throw new Error('Namada SDK initialization failed. This could be due to network issues or missing dependencies. Please try again or contact support.');
+      }
+    }
+
+    if (!this.sdkIntegration) {
+      throw new Error('SDK not available for transaction building');
+    }
+
+    console.log('Namada Undelegate params:', { validatorAddress, amount, memo });
+    
+    try {
+      // Check balance before transaction
+      const balanceBefore = await this.sdkIntegration.getBalance(this.address);
+      console.log('Balance before transaction:', balanceBefore, 'namnam');
+      
+      // Convert amount from smallest denomination to NAM
+      // The SDK might expect amounts in NAM, not namnam
+      // 1 NAM = 1,000,000 namnam
+      const amountInNam = (parseFloat(amount) / 1000000).toString();
+      console.log('Converting amount:', amount, 'namnam to', amountInNam, 'NAM');
+      
+      // Build the unbond transaction using the SDK
+      const txs = await this.sdkIntegration.buildUnbondTx(
+        this.address,
+        validatorAddress,
+        amountInNam, // Pass amount in NAM units
+        this.publicKey,
+        memo
+      );
+      
+      console.log('Number of transactions to sign:', txs.length);
+      console.log('Built unbond transactions:', txs);
+      
+      // Sign the transactions
+      const signedTxs = await this.sdkIntegration.signTxs(txs, this.address);
+      console.log('Signed unbond transactions:', signedTxs);
+      
+      // Broadcast the transaction
+      let finalResult = null;
+      
+      for (let i = 0; i < signedTxs.length; i++) {
+        console.log(`Broadcasting unbond transaction ${i + 1}/${signedTxs.length}`);
+        const result = await this.sdkIntegration.broadcastTx(signedTxs[i]);
+        console.log(`Transaction ${i + 1} result:`, result);
+        
+        if (result.code && result.code !== 0) {
+          throw new Error(`Unbond transaction ${i + 1} failed with code ${result.code}: ${result.log || 'Unknown error'}`);
+        }
+        
+        finalResult = result;
+      }
+      
+      if (!finalResult) {
+        throw new Error('No transaction result received');
+      }
+      
+      console.log('Namada unbond transaction successful!');
+      
+      // Check balance after transaction (optional)
+      try {
+        const balanceAfter = await this.sdkIntegration.getBalance(this.address);
+        console.log('Balance after unbond transaction:', balanceAfter, 'namnam');
+      } catch (balanceError) {
+        console.warn('Could not check balance after transaction:', balanceError);
+      }
+      
+      return {
+        hash: finalResult.hash || '',
+        code: finalResult.code || 0,
+        height: finalResult.height || 0,
+        log: finalResult.log || 'Success'
+      };
+      
+    } catch (error: any) {
+      console.error('Namada undelegate transaction failed:', error);
+      throw new Error(`Undelegate transaction failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Withdraw unbonded assets (for completed unstaking positions)
+   */
+  async withdrawUnbonded(
+    validatorAddress: string,
+    rpcUrl: string,
+    memo: string = ''
+  ): Promise<NamadaTxResult> {
+    if (!this.connected || !window.namada) {
+      throw new Error('Namada wallet not connected');
+    }
+
+    console.log('Namada Withdraw Unbonded params:', { validatorAddress, memo, userAddress: this.address });
+    
+    try {
+      // Use the direct Namada extension API for withdrawing unbonded assets
+      const namada = window.namada;
+      
+      console.log('Checking Namada extension methods:', Object.keys(namada));
+      
+      // Try the direct submitTx method for withdraw
+      if (namada.submitTx) {
+        console.log('Using direct submitTx method for withdraw unbonded...');
+        
+        const txData = {
+          txType: 'withdraw',  // Correct transaction type for withdrawing unbonded assets
+          data: {
+            validator: validatorAddress,
+            source: this.address
+          }
+        };
+        
+        console.log('Submitting withdraw unbonded transaction with data:', txData);
+        
+        const result = await namada.submitTx(txData);
+        console.log('Direct submitTx result:', result);
+        
+        if (!result) {
+          throw new Error('No transaction result received');
+        }
+        
+        return {
+          hash: result.hash || result.txHash || '',
+          code: result.code || 0,
+          height: result.height || 0,
+          log: result.log || result.rawLog || 'Success'
+        };
+      }
+      
+      // Fallback to SDK approach if direct method doesn't work
+      console.log('Falling back to SDK approach for withdraw unbonded...');
+      
+      // Initialize SDK lazily if not already initialized
+      if (!this.sdkIntegration) {
+        console.log('Initializing Namada SDK for withdraw unbonded transaction...');
+        this.sdkIntegration = new NamadaSDKIntegration(rpcUrl, this.chainId);
+        await this.sdkIntegration.init();
+        console.log('Namada SDK initialized for withdraw unbonded transaction');
+      }
+
+      if (!this.sdkIntegration) {
+        throw new Error('SDK not available for transaction building');
+      }
+      
+      // Build the withdraw transaction using the SDK
+      const txs = await this.sdkIntegration.buildWithdrawTx(
+        this.address,
+        validatorAddress,
+        this.publicKey,
+        memo
+      );
+      
+      console.log('Number of transactions to sign:', txs.length);
+      console.log('Built withdraw transactions:', txs);
+      
+      // Sign the transactions using SDK
+      const signedTxs = await this.sdkIntegration.signTxs(txs, this.address);
+      console.log('Signed withdraw transactions:', signedTxs);
+      
+      // Broadcast the transaction
+      let finalResult = null;
+      
+      for (let i = 0; i < signedTxs.length; i++) {
+        console.log(`Broadcasting withdraw transaction ${i + 1}/${signedTxs.length}`);
+        const result = await this.sdkIntegration.broadcastTx(signedTxs[i]);
+        console.log(`Transaction ${i + 1} result:`, result);
+        
+        if (result.code && result.code !== 0) {
+          throw new Error(`Withdraw transaction ${i + 1} failed with code ${result.code}: ${result.log || 'Unknown error'}`);
+        }
+        
+        finalResult = result;
+      }
+      
+      if (!finalResult) {
+        throw new Error('No transaction result received');
+      }
+      
+      console.log('Namada withdraw unbonded transaction successful!');
+      
+      return {
+        hash: finalResult.hash || '',
+        code: finalResult.code || 0,
+        height: finalResult.height || 0,
+        log: finalResult.log || 'Success'
+      };
+      
+    } catch (error: any) {
+      console.error('Namada withdraw unbonded transaction failed:', error);
+      
+      // Handle specific Namada error messages
+      let errorMessage = error.message || 'Unknown error';
+      
+      if (error.message && error.message.includes('user rejected')) {
+        errorMessage = 'Transaction was cancelled by user.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Claim rewards from a validator
+   */
+  async claimRewards(
+    validatorAddress: string,
+    rpcUrl: string,
+    memo: string = ''
+  ): Promise<NamadaTxResult> {
+    if (!this.connected || !window.namada) {
+      throw new Error('Namada wallet not connected');
+    }
+
+    console.log('Namada Claim Rewards params:', { validatorAddress, memo, userAddress: this.address });
+    
+    try {
+      // Use the direct Namada extension API like app.namada.cc does
+      const namada = window.namada;
+      
+      console.log('Checking Namada extension methods:', Object.keys(namada));
+      
+      // Try the direct submitTx method that app.namada.cc uses
+      if (namada.submitTx) {
+        console.log('Using direct submitTx method for claim rewards...');
+        
+        const txData = {
+          txType: 'Claim Rewards',  // Correct transaction type for claiming rewards
+          data: {
+            validator: validatorAddress,
+            source: this.address
+          }
+        };
+        
+        console.log('Submitting claim rewards transaction with data:', txData);
+        
+        const result = await namada.submitTx(txData);
+        console.log('Direct submitTx result:', result);
+        
+        if (!result) {
+          throw new Error('No transaction result received');
+        }
+        
+        return {
+          hash: result.hash || result.txHash || '',
+          code: result.code || 0,
+          height: result.height || 0,
+          log: result.log || result.rawLog || 'Success'
+        };
+      }
+      
+      // Fallback to SDK approach if direct method doesn't work
+      console.log('Falling back to SDK approach for claim rewards...');
+      
+      // Initialize SDK lazily if not already initialized
+      if (!this.sdkIntegration) {
+        console.log('Initializing Namada SDK for claim rewards transaction...');
+        this.sdkIntegration = new NamadaSDKIntegration(rpcUrl, this.chainId);
+        await this.sdkIntegration.init();
+        console.log('Namada SDK initialized for claim rewards transaction');
+      }
+
+      if (!this.sdkIntegration) {
+        throw new Error('SDK not available for transaction building');
+      }
+      
+      // Build the claim rewards transaction using the SDK
+      const txs = await this.sdkIntegration.buildClaimRewardsTx(
+        this.address,
+        validatorAddress,
+        this.publicKey,
+        memo
+      );
+      
+      console.log('Number of transactions to sign:', txs.length);
+      console.log('Built claim rewards transactions:', txs);
+      
+      // Sign the transactions using SDK
+      const signedTxs = await this.sdkIntegration.signTxs(txs, this.address);
+      console.log('Signed claim rewards transactions:', signedTxs);
+      
+      // Broadcast the transaction
+      let finalResult = null;
+      
+      for (let i = 0; i < signedTxs.length; i++) {
+        console.log(`Broadcasting claim rewards transaction ${i + 1}/${signedTxs.length}`);
+        const result = await this.sdkIntegration.broadcastTx(signedTxs[i]);
+        console.log(`Transaction ${i + 1} result:`, result);
+        
+        if (result.code && result.code !== 0) {
+          throw new Error(`Claim rewards transaction ${i + 1} failed with code ${result.code}: ${result.log || 'Unknown error'}`);
+        }
+        
+        finalResult = result;
+      }
+      
+      if (!finalResult) {
+        throw new Error('No transaction result received');
+      }
+      
+      console.log('Namada claim rewards transaction successful!');
+      
+      return {
+        hash: finalResult.hash || '',
+        code: finalResult.code || 0,
+        height: finalResult.height || 0,
+        log: finalResult.log || 'Success'
+      };
+      
+    } catch (error: any) {
+      console.error('Namada claim rewards transaction failed:', error);
+      
+      // Handle specific Namada error messages
+      let errorMessage = error.message || 'Unknown error';
+      
+      if (error.message && error.message.includes('no unbonded bonds ready to withdraw')) {
+        errorMessage = `No rewards are currently available to claim for this epoch. 
+
+In Namada, rewards are epoch-based and may require specific conditions:
+• Rewards may only be claimable after certain epochs have passed
+• Some validators require bonds to be unbonded before claiming rewards  
+• The rewards shown may represent accumulated rewards that may become available in future epochs
+
+Please try again later or check with the validator for specific requirements.`;
+      } else if (error.message && error.message.includes('current epoch')) {
+        errorMessage = `Rewards are not yet available for withdrawal in the current epoch. 
+
+Namada uses an epoch-based reward system. The rewards shown may become available for withdrawal in upcoming epochs. Please wait for the next epoch and try again.`;
+      } else if (error.message && error.message.includes('user rejected')) {
+        errorMessage = 'Transaction was cancelled by user.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
    * Get staking data (bonds, unbonds, etc.)
    */
   async getStakingData(rpcUrl?: string): Promise<any> {

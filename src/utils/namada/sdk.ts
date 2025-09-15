@@ -3,10 +3,20 @@
  * Handles transaction building and signing using the official Namada SDK
  */
 
-import BigNumber from 'bignumber.js';
-import { NamadaTxResult } from './types';
+// Import Buffer polyfill first
+import { Buffer } from 'buffer'
 
-// Import types we need
+// Ensure Buffer is available globally before importing Namada SDK
+if (typeof (globalThis as any).Buffer === 'undefined') {
+  ;(globalThis as any).Buffer = Buffer
+}
+
+// Use the inline import for Vite to avoid WebAssembly loading issues
+import { initSdk, getNativeToken } from '@namada/sdk/inline'
+import BigNumber from 'bignumber.js'
+import { NamadaTxResult } from './types'
+
+// Import transaction types from SDK
 interface BondProps {
   source: string;
   validator: string;
@@ -55,52 +65,19 @@ export class NamadaSDKIntegration {
    */
   async init(): Promise<void> {
     if (!this.sdk) {
+      // Get native token from the node
+      let nativeToken = NAM_TOKEN_ADDRESS;
       try {
-        console.log('Initializing Namada SDK...');
-        
-        // Check if we're in a browser environment
-        if (typeof window === 'undefined') {
-          throw new Error('Namada SDK requires browser environment');
-        }
-
-        // Check if Buffer is available
-        if (typeof window.Buffer === 'undefined') {
-          throw new Error('Buffer polyfill not loaded. Make sure to import Buffer in main.tsx');
-        }
-
-        // Use dynamic import to load Namada SDK
-        const { initSdk, getNativeToken } = await import('@namada/sdk/inline');
-        
-        console.log('Namada SDK modules loaded successfully');
-        
-        // Get native token from the node
-        let nativeToken = NAM_TOKEN_ADDRESS;
-        try {
-          console.log('Fetching native token from RPC:', this.rpcUrl);
-          nativeToken = await getNativeToken(this.rpcUrl);
-          console.log('Native token fetched:', nativeToken);
-        } catch (error) {
-          console.warn('Failed to fetch native token, using default:', error);
-          // Use default if fetching fails
-        }
-        
-        // Initialize the SDK with correct props
-        console.log('Initializing SDK with:', { rpcUrl: this.rpcUrl, token: nativeToken });
-        this.sdk = await initSdk({
-          rpcUrl: this.rpcUrl,
-          token: nativeToken,
-        });
-        
-        console.log('Namada SDK initialized successfully');
-      } catch (error: any) {
-        console.error('Failed to initialize Namada SDK:', error);
-        console.error('Error details:', {
-          name: error?.name,
-          message: error?.message,
-          stack: error?.stack
-        });
-        throw new Error(`Failed to initialize Namada SDK: ${error?.message || 'Unknown error'}`);
+        nativeToken = await getNativeToken(this.rpcUrl);
+      } catch (error) {
+        // Use default if fetching fails
       }
+      
+      // Initialize the SDK with correct props
+      this.sdk = await initSdk({
+        rpcUrl: this.rpcUrl,
+        token: nativeToken,
+      });
     }
   }
 
@@ -233,17 +210,16 @@ export class NamadaSDKIntegration {
     txs: TxProps[],
     owner: string
   ): Promise<Uint8Array[]> {
-    const namada = window.namada;
+    const namada = (window as any).namada;
     if (!namada) {
       throw new Error('Namada extension not available');
     }
 
-    const signer = namada.getSigner?.();
+    const signer = namada.getSigner();
     if (!signer) {
       throw new Error('Namada signer not available');
     }
 
-    console.log('Signing', txs.length, 'transactions for owner:', owner);
     try {
       // The signer expects the txs array format
       const signedTxs = await signer.sign(txs, owner);

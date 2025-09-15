@@ -1,3 +1,4 @@
+// Restore SDK import
 import { NamadaSDKIntegration } from './sdk';
 import { NamadaTxResult } from './types';
 
@@ -192,17 +193,14 @@ export class NamadaWalletManager {
     // Initialize SDK lazily if not already initialized
     if (!this.sdkIntegration) {
       try {
+        console.log('Initializing Namada SDK for transaction...');
         this.sdkIntegration = new NamadaSDKIntegration(rpcUrl, this.chainId);
         await this.sdkIntegration.init();
         console.log('Namada SDK initialized for transaction');
       } catch (error: any) {
         console.error('Failed to initialize SDK:', error);
-        console.error('SDK initialization error details:', {
-          name: error?.name,
-          message: error?.message
-        });
         
-        // Provide a helpful error message for the user
+        // Provide a simple error message
         throw new Error('Namada SDK initialization failed. This could be due to network issues or missing dependencies. Please try again or contact support.');
       }
     }

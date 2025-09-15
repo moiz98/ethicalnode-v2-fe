@@ -6,6 +6,7 @@ import { useWallet } from '../../contexts/WalletContext';
 import { assetLists, chains } from 'chain-registry';
 import { Decimal } from '@cosmjs/math';
 import { useToast } from '../../components/common/ToastProvider';
+import { NamadaWalletManager } from '../../utils/namada';
 
 interface Validator {
   _id: string;
@@ -231,7 +232,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               const walletAddress = accounts[0].address;
               console.log('Namada wallet address:', walletAddress);
               
-              // Call backend API for Namada balance
+              // Call backend API for Namada balance directly
               const response = await fetch(`http://localhost:3000/api/investors/getNamadaBalance/${walletAddress}`);
               
               if (response.ok) {
@@ -240,12 +241,19 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 
                 if (result.success && result.data?.balance) {
                   const balance = result.data.balance.amount;
-                  const displayBalance = (parseFloat(balance) / 1000000).toString(); // Convert from unam to NAM
-                  console.log('Namada balance found:', displayBalance);
+                  // Convert from namnam to NAM (1 NAM = 1,000,000 namnam)
+                  const displayBalance = (parseFloat(balance) / 1000000).toFixed(6);
+                  console.log('Namada balance found:', displayBalance, 'NAM');
                   return displayBalance;
+                } else {
+                  console.warn('No balance data in backend response');
+                  return '0';
                 }
               } else {
-                console.error('Namada backend API response not ok:', response.status);
+                console.error('Backend API response not ok:', response.status);
+                const errorText = await response.text();
+                console.error('Backend error:', errorText);
+                return '0';
               }
             }
           } catch (error) {
@@ -588,6 +596,9 @@ const Validators: React.FC = () => {
     success: false
   });
   const hasInitialized = useRef(false);
+  
+  // Create Namada wallet manager instance
+  const namadaWallet = useRef<NamadaWalletManager | null>(null);
 
   const fetchValidators = async () => {
     try {
@@ -734,24 +745,141 @@ const Validators: React.FC = () => {
         // Handle Namada transactions
         if (window.namada) {
           try {
-            const accounts = await window.namada.accounts();
-            if (accounts && accounts.length > 0) {
-              console.log('Namada account:', accounts[0]);
-              
-              console.log('Initiating Namada stake transaction...');
-              // Close modal and show info about Namada coming soon
-              closeModal();
-              setTransactionResultModal({
-                isOpen: true,
-                success: false,
-                chainName: validator.chainName,
-                amount: amount,
-                tokenSymbol: 'NAM',
-                validatorName: validator.validatorName,
-                errorMessage: 'Namada staking integration coming soon! Please check back later for full Namada support.'
-              });
+            // Initialize Namada wallet manager if not already done
+            if (!namadaWallet.current) {
+              namadaWallet.current = new NamadaWalletManager();
             }
-          } catch (error) {
+
+            // Get working RPC endpoints from backend API for Namada
+            let workingRpc = null;
+            try {
+              console.log('Fetching Namada RPC endpoints from backend for chain:', validator.chainId);
+              const apiResponse = await fetch(`http://localhost:3000/api/apis/${validator.chainId}`);
+              
+              if (apiResponse.ok) {
+                const apiData = await apiResponse.json();
+                console.log('Backend API response for Namada RPCs:', apiData);
+                
+                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                  // Test RPC endpoints to find working one
+                  for (const rpcEndpoint of apiData.data.rpc) {
+                    try {
+                      console.log(`Testing Namada RPC endpoint: ${rpcEndpoint.address}`);
+                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                      });
+                      
+                      if (testResponse.ok) {
+                        workingRpc = rpcEndpoint.address;
+                        console.log(`Found working Namada RPC: ${workingRpc}`);
+                        break;
+                      }
+                    } catch (rpcTest) {
+                      console.warn(`Namada RPC ${rpcEndpoint.address} not responding`);
+                      continue;
+                    }
+                  }
+                }
+              }
+            } catch (apiError) {
+              console.warn('Failed to fetch Namada RPC from backend, using fallback:', apiError);
+            }
+
+            // If no working RPC found from backend, use fallback
+            if (!workingRpc) {
+              const fallbackRpc = 'https://namada-mainnet-rpc.mellifera.network:443';
+              try {
+                console.log(`Testing Namada fallback RPC: ${fallbackRpc}`);
+                const testResponse = await fetch(`${fallbackRpc}/status`, {
+                  signal: AbortSignal.timeout(5000) // 5 second timeout
+                });
+                if (testResponse.ok) {
+                  workingRpc = fallbackRpc;
+                  console.log(`Using Namada fallback RPC: ${workingRpc}`);
+                } else {
+                  console.warn('Namada fallback RPC not responding, proceeding anyway');
+                  workingRpc = fallbackRpc; // Use fallback even if test fails
+                }
+              } catch (err) {
+                console.warn(`Namada fallback RPC test failed, using anyway:`, err);
+                workingRpc = fallbackRpc; // Use fallback even if test fails
+              }
+            }
+
+            console.log('Using Namada RPC endpoint:', workingRpc);
+            
+            // Connect to Namada wallet
+            const connected = await namadaWallet.current.connect(validator.chainId, workingRpc);
+            if (!connected) {
+              throw new Error('Failed to connect to Namada wallet');
+            }
+
+            const userAddress = namadaWallet.current.getAddress();
+            console.log('Connected Namada address:', userAddress);
+
+            // Convert amount from display units to smallest denomination
+            // amount is in NAM, need to convert to namnam (1 NAM = 1,000,000 namnam)
+            const amountInNamnam = (parseFloat(amount) * 1000000).toString();
+            
+            console.log('Initiating Namada stake transaction...');
+            console.log('Validator:', validator.validatorAddress);
+            console.log('Amount:', amountInNamnam, 'namnam');
+
+            // Show wallet prompt notification
+            showToast({
+              type: 'info',
+              title: 'Wallet Action Required',
+              message: 'Please confirm the transaction in your Namada wallet...',
+              duration: 8000
+            });
+
+            // Delegate tokens using the Namada wallet manager
+            const result = await namadaWallet.current.delegate(
+              validator.validatorAddress,
+              amountInNamnam,
+              workingRpc,
+              `Staking ${amount} NAM via EthicalNode`
+            );
+
+            console.log('Namada transaction result:', result);
+
+            // Create transaction record in backend
+            await createTransactionRecord({
+              txHash: result.hash || '',
+              userPublicAddress: userAddress,
+              chainId: validator.chainId,
+              chainName: validator.chainName,
+              type: 'delegate',
+              amount: amountInNamnam,
+              tokenSymbol: 'NAM',
+              tokenDenom: 'nam',
+              validatorAddress: validator.validatorAddress,
+              status: 'success',
+              rawTx: result
+            });
+
+            console.log('Namada staking transaction completed successfully!');
+            closeModal();
+            setTransactionResultModal({
+              isOpen: true,
+              success: true,
+              txHash: result.hash,
+              chainName: validator.chainName,
+              amount: amount,
+              tokenSymbol: 'NAM',
+              validatorName: validator.validatorName
+            });
+
+            // Show success toast
+            showToast({
+              type: 'success',
+              title: 'Staking Successful!',
+              message: `Successfully staked ${amount} NAM to ${validator.validatorName}`
+            });
+
+          } catch (error: any) {
             console.error('Namada transaction failed:', error);
             closeModal();
             setTransactionResultModal({
@@ -761,7 +889,14 @@ const Validators: React.FC = () => {
               amount: amount,
               tokenSymbol: 'NAM',
               validatorName: validator.validatorName,
-              errorMessage: 'Namada transaction failed. Please try again or check your wallet connection.'
+              errorMessage: error.message || 'Namada transaction failed. Please try again or check your wallet connection.'
+            });
+
+            // Show error toast
+            showToast({
+              type: 'error',
+              title: 'Staking Failed',
+              message: error.message || 'Transaction failed. Please try again.'
             });
           }
         } else {

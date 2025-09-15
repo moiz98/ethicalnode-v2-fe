@@ -6,6 +6,10 @@ import { BrowserRouter } from 'react-router'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { WalletProvider } from './contexts/WalletContext'
 
+// Polyfill Buffer for browser compatibility with Namada SDK
+import { Buffer } from 'buffer'
+window.Buffer = Buffer
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

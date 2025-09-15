@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface Window {
+  Buffer: any;
   keplr?: {
     enable(chainIds: string[]): Promise<void>;
     getKey(chainId: string): Promise<{
@@ -47,10 +48,16 @@ interface Window {
     }, mode: string): Promise<Uint8Array>;
   };
   namada?: {
-    accounts(): Promise<Array<{ address: string; alias?: string }>>;
+    accounts(): Promise<Array<{ address: string; alias?: string; type?: string; publicKey?: string }>>;
     sign(tx: any): Promise<any>;
-    connect(): Promise<void>;
+    connect(chainId?: string): Promise<void>;
     isConnected(): Promise<boolean>;
     enable?(): Promise<void>;
+    getSigner?(): any;
+    getAddress?(): Promise<string>;
+    getAccounts?(): Promise<any[]>;
+    defaultAccount?(): Promise<any>;
+    submitTransaction?(tx: any): Promise<any>;
+    [key: string]: any;
   };
 }

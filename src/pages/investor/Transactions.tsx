@@ -20,12 +20,6 @@ interface Transaction {
   updatedAt: string;
 }
 
-interface TransactionStatistic {
-  _id: string;
-  count: number;
-  totalAmount: number;
-}
-
 interface PaginationInfo {
   total: number;
   page: number;
@@ -40,19 +34,17 @@ interface TransactionsResponse {
   message: string;
   data: {
     transactions: Transaction[];
-    statistics: TransactionStatistic[];
     pagination: PaginationInfo;
   };
 }
 
 const Transactions: React.FC = () => {
   const { isDarkMode } = useTheme();
-  const { isConnected, keplrAddress, namadaAddress } = useWallet();
+  const { isConnected, keplrPublicKey } = useWallet();
   
-  // Use Keplr address if available, otherwise use Namada
-  const primaryAddress = keplrAddress || namadaAddress;
+  // Use Keplr Public Address
+  const primaryAddress = keplrPublicKey;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [statistics, setStatistics] = useState<TransactionStatistic[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +59,6 @@ const Transactions: React.FC = () => {
   const fetchTransactions = async (page: number = 1) => {
     if (!primaryAddress) {
       setTransactions([]);
-      setStatistics([]);
       setPagination(null);
       setLoading(false);
       return;
@@ -107,7 +98,6 @@ const Transactions: React.FC = () => {
       
       if (result.success && result.data) {
         setTransactions(result.data.transactions);
-        setStatistics(result.data.statistics);
         setPagination(result.data.pagination);
       } else {
         throw new Error(result.message || 'Failed to fetch transactions');
@@ -116,7 +106,6 @@ const Transactions: React.FC = () => {
       console.error('Error fetching transactions:', err);
       setError(err instanceof Error ? err.message : 'Failed to load transaction data');
       setTransactions([]);
-      setStatistics([]);
       setPagination(null);
     } finally {
       setLoading(false);
@@ -126,25 +115,25 @@ const Transactions: React.FC = () => {
   useEffect(() => {
     if (!isConnected || !primaryAddress) {
       setTransactions([]);
-      setStatistics([]);
       setPagination(null);
       setLoading(false);
       return;
     }
 
-    // Reset to first page when filters change
+    // Reset to first page when filters change, otherwise use current page
+    const pageToFetch = hasInitialized.current ? 1 : currentPage;
     if (hasInitialized.current) {
       setCurrentPage(1);
-      fetchTransactions(1);
     } else {
       hasInitialized.current = true;
-      fetchTransactions(currentPage);
     }
+    
+    fetchTransactions(pageToFetch);
   }, [isConnected, primaryAddress, filter, statusFilter]);
 
-  // Handle page changes
+  // Handle page changes separately (only when page changes, not filters)
   useEffect(() => {
-    if (hasInitialized.current && isConnected && primaryAddress) {
+    if (hasInitialized.current && isConnected && primaryAddress && currentPage > 1) {
       fetchTransactions(currentPage);
     }
   }, [currentPage]);
@@ -209,7 +198,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const formatAmount = (amount: string, tokenSymbol: string, tokenDenom: string) => {
+  const formatAmount = (amount: string, tokenSymbol: string) => {
     // Convert from base units to display units
     // Most tokens have 6 decimal places (micro units)
     const decimals = 6;
@@ -558,7 +547,7 @@ const Transactions: React.FC = () => {
                         <td className={`px-6 py-4 text-sm font-medium ${
                           isDarkMode ? 'text-white' : 'text-gray-900'
                         }`}>
-                          {formatAmount(transaction.amount, transaction.tokenSymbol, transaction.tokenDenom)}
+                          {formatAmount(transaction.amount, transaction.tokenSymbol)}
                         </td>
                         <td className={`px-6 py-4 text-sm ${
                           isDarkMode ? 'text-gray-300' : 'text-gray-700'

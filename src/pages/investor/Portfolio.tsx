@@ -10,6 +10,7 @@ import { NamadaWalletManager } from '../../utils/namada';
 import { SigningStargateClient } from '@cosmjs/stargate';
 import { MsgUndelegate } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
 import { MsgWithdrawDelegatorReward } from 'cosmjs-types/cosmos/distribution/v1beta1/tx';
+import { MsgCancelUnbondingDelegation } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
 
 // Helper function to get chain asset data from asset lists
 const getChainAssetData = (chainName: string) => {
@@ -185,6 +186,8 @@ interface UnstakingAsset {
   canWithdraw: boolean;
   daysRemaining?: number;
   coingeckoId?: string;
+  creationHeight?: string; // Block height when unstaking was initiated
+  validatorAddress?: string; // Validator address for cancel unbonding
 }
 
 interface PortfolioOverview {
@@ -207,7 +210,7 @@ interface TransactionResultModalProps {
   tokenSymbol?: string;
   validatorName?: string;
   errorMessage?: string;
-  transactionType?: 'unstake' | 'claim';
+  transactionType?: 'unstake' | 'claim' | 'cancel_undelegate';
 }
 
 const TransactionResultModal: React.FC<TransactionResultModalProps> = ({
@@ -252,6 +255,8 @@ const TransactionResultModal: React.FC<TransactionResultModalProps> = ({
         return 'Unstaking';
       case 'claim':
         return 'Claim Rewards';
+      case 'cancel_undelegate':
+        return 'Cancel Unstaking';
       default:
         return 'Transaction';
     }
@@ -416,7 +421,9 @@ const InvestorPortfolio: React.FC = () => {
   const [showNamadaNotification, setShowNamadaNotification] = useState(false);
   const [showUnstakeModal, setShowUnstakeModal] = useState(false);
   const [showClaimRewardsModal, setShowClaimRewardsModal] = useState(false);
+  const [showCancelUnstakingModal, setShowCancelUnstakingModal] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<StakedAsset | null>(null);
+  const [selectedUnstakingAsset, setSelectedUnstakingAsset] = useState<UnstakingAsset | null>(null);
   const [unstakeAmount, setUnstakeAmount] = useState('');
   const [isTransactionInProgress, setIsTransactionInProgress] = useState(false);
   const [transactionResultModal, setTransactionResultModal] = useState<{
@@ -428,7 +435,7 @@ const InvestorPortfolio: React.FC = () => {
     tokenSymbol?: string;
     validatorName?: string;
     errorMessage?: string;
-    transactionType?: 'unstake' | 'claim';
+    transactionType?: 'unstake' | 'claim' | 'cancel_undelegate';
   }>({
     isOpen: false,
     success: false
@@ -463,8 +470,8 @@ const InvestorPortfolio: React.FC = () => {
 
   const handleCancelUnstaking = (asset: UnstakingAsset) => {
     console.log('Cancel unstaking action for:', asset.chainName, asset.amount, asset.asset);
-    // TODO: Implement cancel unstaking functionality
-    alert(`Cancel unstaking ${asset.amount} ${asset.asset} from ${asset.chainName} - Coming Soon!`);
+    setSelectedUnstakingAsset(asset);
+    setShowCancelUnstakingModal(true);
   };
 
   const handleWithdrawUnstaking = (asset: UnstakingAsset) => {
@@ -676,7 +683,9 @@ const InvestorPortfolio: React.FC = () => {
               completionDate: entry.completionTime,
               canWithdraw: entry.canWithdraw || false,
               daysRemaining: daysRemaining,
-              coingeckoId: assetData.coingeckoId
+              coingeckoId: assetData.coingeckoId,
+              creationHeight: entry.creationHeight || entry.creation_height, // Support both naming conventions
+              validatorAddress: position.validatorAddress || entry.validatorAddress
             });
           });
         });
@@ -783,11 +792,11 @@ const InvestorPortfolio: React.FC = () => {
 
   // Function to create transaction record in backend
   const createTransactionRecord = async (transactionData: {
-    txHash: string;
+    txHash?: string;
     userPublicAddress: string;
     chainId: string;
     chainName: string;
-    type: 'undelegate' | 'claim_rewards';
+    type: 'undelegate' | 'claim_rewards' | 'cancel_undelegate';
     amount: string;
     tokenSymbol: string;
     tokenDenom: string;
@@ -1004,6 +1013,10 @@ const InvestorPortfolio: React.FC = () => {
               message: `Successfully unstaked ${unstakeAmount} NAM from ${selectedAsset.validatorName}`
             });
 
+            // Refresh portfolio data
+            setTimeout(() => {
+              fetchPortfolioData();
+            }, 2000);
           } catch (error: any) {
             console.error('Namada transaction failed:', error);
             setShowUnstakeModal(false);
@@ -1283,6 +1296,11 @@ const InvestorPortfolio: React.FC = () => {
               message: `Successfully unstaked ${unstakeAmount} ${stakeCurrency.symbol} from ${selectedAsset.validatorName}`
             });
 
+            // Refresh portfolio data
+            setTimeout(() => {
+              fetchPortfolioData();
+            }, 2000);
+
           } catch (error: any) {
             console.error('Cosmos unstaking transaction failed:', error);
             setShowUnstakeModal(false);
@@ -1489,6 +1507,11 @@ const InvestorPortfolio: React.FC = () => {
               title: 'Claim Rewards Successful!',
               message: `Successfully claimed ${selectedAsset.pendingRewards} NAM rewards from ${selectedAsset.validatorName}`
             });
+
+            // Refresh portfolio data
+            setTimeout(() => {
+              fetchPortfolioData();
+            }, 2000);
 
           } catch (error: any) {
             console.error('Namada transaction failed:', error);
@@ -1802,6 +1825,11 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
               title: 'Claim Rewards Failed',
               message: error.message || 'Transaction failed. Please try again.'
             });
+
+            // Refresh portfolio data
+            setTimeout(() => {
+              fetchPortfolioData();
+            }, 2000);
           }
         } else {
           setShowClaimRewardsModal(false);
@@ -1834,6 +1862,276 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
       setIsTransactionInProgress(false);
     }
   }, [selectedAsset, isTransactionInProgress, showToast, namadaWallet, createTransactionRecord, setTransactionResultModal]);
+
+  const handleCancelUnstakingSubmit = useCallback(async () => {
+    if (!selectedUnstakingAsset || isTransactionInProgress) return;
+    
+    // Skip Namada chains for now as cancel unstaking is only implemented for Cosmos chains
+    if (selectedUnstakingAsset.chainName.toLowerCase().includes('namada') || selectedUnstakingAsset.chainId.includes('namada')) {
+      showToast({
+        type: 'error',
+        title: 'Not Supported',
+        message: 'Cancel unstaking is not available for Namada chains'
+      });
+      return;
+    }
+
+    // Validate required data for cancel unbonding
+    if (!selectedUnstakingAsset.creationHeight || !selectedUnstakingAsset.validatorAddress) {
+      showToast({
+        type: 'error',
+        title: 'Missing Data',
+        message: 'Required data for cancel unstaking is not available'
+      });
+      return;
+    }
+    
+    try {
+      setIsTransactionInProgress(true);
+      
+      console.log('Cancel unstaking for asset:', selectedUnstakingAsset);
+      
+      // Handle Cosmos-based chains
+      if (!window.keplr || !keplrPublicKey) {
+        throw new Error('Keplr wallet not available');
+      }
+
+      // Enable the chain in Keplr
+      await window.keplr.enable([selectedUnstakingAsset.chainId]);
+      
+      // Get the offline signer
+      const offlineSigner = window.keplr.getOfflineSigner(selectedUnstakingAsset.chainId);
+      const accounts = await offlineSigner.getAccounts();
+      const userAddress = accounts[0].address;
+
+      // Get working RPC endpoints from backend API
+      let workingRpc = null;
+      try {
+        console.log('Fetching RPC endpoints from backend for chain:', selectedUnstakingAsset.chainId);
+        const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedUnstakingAsset.chainId}`);
+        
+        if (apiResponse.ok) {
+          const apiData = await apiResponse.json();
+          console.log('Backend API response for RPCs:', apiData);
+          
+          if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+            // Test RPC endpoints to find working one
+            for (const rpcEndpoint of apiData.data.rpc) {
+              try {
+                console.log(`Testing RPC endpoint: ${rpcEndpoint.address}`);
+                const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                  method: 'GET',
+                  headers: { 'Content-Type': 'application/json' },
+                  signal: AbortSignal.timeout(5000) // 5 second timeout
+                });
+                
+                if (testResponse.ok) {
+                  workingRpc = rpcEndpoint.address;
+                  console.log(`Found working RPC: ${workingRpc}`);
+                  break;
+                }
+              } catch (rpcError) {
+                console.log(`RPC ${rpcEndpoint.address} failed:`, rpcError);
+                continue;
+              }
+            }
+          }
+        }
+      } catch (apiError) {
+        console.warn('Failed to fetch RPC endpoints from backend:', apiError);
+      }
+
+      // Fallback to default RPC if no working RPC found
+      if (!workingRpc) {
+        const fallbackRpcs: { [key: string]: string } = {
+          'cosmoshub-4': 'https://cosmos-rpc.polkachu.com',
+          'akashnet-2': 'https://akash-rpc.polkachu.com',
+          'fetchhub-4': 'https://fetch-rpc.polkachu.com',
+          'osmosis-1': 'https://osmosis-rpc.polkachu.com'
+        };
+        workingRpc = fallbackRpcs[selectedUnstakingAsset.chainId] || 'https://cosmos-rpc.polkachu.com';
+        console.log(`Using fallback RPC: ${workingRpc}`);
+      }
+
+      // Create the signing client
+      const client = await SigningStargateClient.connectWithSigner(
+        workingRpc,
+        offlineSigner as any // Cast to any to avoid TypeScript issues with Keplr's signer
+      );
+
+      // Get chain asset data for fee calculation
+      const assetData = getChainAssetData(selectedUnstakingAsset.chainName);
+      
+      // Get chain registry data for dynamic fee calculation
+      const chainRegistryData = assetLists.find(a => a.chainName === selectedUnstakingAsset.chainName);
+      const chainData = chains.find(c => c.chainName === selectedUnstakingAsset.chainName);
+      
+      if (!chainRegistryData || !chainData) {
+        console.warn(`Chain registry data not found for ${selectedUnstakingAsset.chainName}, using default fees`);
+        // Continue with default values rather than throwing error
+      }
+      
+      // Convert display amount back to base denomination
+      const baseDenom = assetData.baseDenom;
+      const decimals = assetData.decimals;
+      const amountInBaseDenom = (parseFloat(selectedUnstakingAsset.amount) * Math.pow(10, decimals)).toString();
+
+      // Calculate gas fee using chain registry data
+      let gasAmount = "800000"; // Higher gas limit for cancel unbonding (more complex operation)
+      let feeAmount = "4800"; // Default fallback (increased proportionally)
+      
+      // Adjust gas limit based on chain if needed
+      const chainSpecificGasLimits: { [key: string]: string } = {
+        'cosmoshub-4': '600000',  // Cosmos Hub typically needs less gas
+        'akashnet-2': '800000',   // Akash may need more gas
+        'fetchhub-4': '700000',   // Fetch.ai
+        'osmosis-1': '900000'     // Osmosis may need more for complex operations
+      };
+      
+      if (chainSpecificGasLimits[selectedUnstakingAsset.chainId]) {
+        gasAmount = chainSpecificGasLimits[selectedUnstakingAsset.chainId];
+        console.log(`Using chain-specific gas limit for ${selectedUnstakingAsset.chainId}: ${gasAmount}`);
+      }
+      
+      // Get fee information from chain data
+      if (chainData && chainData.fees && chainData.fees.feeTokens && chainData.fees.feeTokens.length > 0) {
+        const feeToken = chainData.fees.feeTokens.find(token => token.denom === baseDenom) || chainData.fees.feeTokens[0];
+        
+        if (feeToken) {
+          // Use average gas price if available, otherwise use fixed min gas price
+          let gasPrice = feeToken.averageGasPrice || feeToken.fixedMinGasPrice || feeToken.lowGasPrice || 0.005;
+          
+          // Calculate fee amount based on gas limit and gas price
+          // Gas price is usually in display units, so convert to base units
+          const feeInBaseUnits = Math.ceil(parseInt(gasAmount) * gasPrice);
+          feeAmount = feeInBaseUnits.toString();
+          
+          console.log(`Using chain registry fee data for ${selectedUnstakingAsset.chainName} cancel unstaking:`, {
+            gasPrice,
+            gasAmount,
+            feeAmount,
+            baseDenom,
+            decimals,
+            feeToken
+          });
+        }
+      }
+      
+      // Get additional gas limit from chain data if available
+      if (chainData && chainData.staking && chainData.staking.stakingTokens && chainData.staking.stakingTokens.length > 0) {
+        const stakingToken = chainData.staking.stakingTokens.find(token => token.denom === baseDenom);
+        if (stakingToken) {
+          console.log('Found staking token data for cancel unstaking:', stakingToken);
+        }
+      }
+
+      // Create the MsgCancelUnbondingDelegation message
+      const message = {
+        typeUrl: '/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation',
+        value: MsgCancelUnbondingDelegation.fromPartial({
+          delegatorAddress: userAddress,
+          validatorAddress: selectedUnstakingAsset.validatorAddress,
+          amount: {
+            denom: baseDenom,
+            amount: amountInBaseDenom,
+          },
+          creationHeight: BigInt(selectedUnstakingAsset.creationHeight),
+        }),
+      };
+
+      console.log('Created cancel unbonding message:', message);
+
+      // Use dynamically calculated fee
+      const fee = {
+        gas: gasAmount,
+        amount: [{
+          denom: baseDenom,
+          amount: feeAmount
+        }]
+      };
+
+      // Sign and broadcast the transaction
+      console.log('Signing and broadcasting cancel unstaking transaction...');
+      const result = await client.signAndBroadcast(userAddress, [message], fee);
+      
+      console.log('Cancel unstaking transaction result:', result);
+
+      if (result.code !== 0) {
+        throw new Error(result.rawLog || 'Transaction failed');
+      }
+
+      // Create transaction record
+      await createTransactionRecord({
+        userPublicAddress: userAddress,
+        chainId: selectedUnstakingAsset.chainId,
+        chainName: selectedUnstakingAsset.chainName,
+        type: 'cancel_undelegate',
+        amount: amountInBaseDenom,
+        tokenSymbol: selectedUnstakingAsset.asset,
+        tokenDenom: baseDenom,
+        validatorAddress: selectedUnstakingAsset.validatorAddress,
+        status: 'success',
+        txHash: result.transactionHash,
+        rawTx: result
+      });
+
+      console.log('Cancel unstaking transaction completed successfully!');
+      setShowCancelUnstakingModal(false);
+      setTransactionResultModal({
+        isOpen: true,
+        success: true,
+        txHash: result.transactionHash,
+        chainName: selectedUnstakingAsset.chainName,
+        amount: selectedUnstakingAsset.amount,
+        tokenSymbol: selectedUnstakingAsset.asset,
+        transactionType: 'cancel_undelegate'
+      });
+
+      // Show success toast
+      showToast({
+        type: 'success',
+        title: 'Cancel Unstaking Successful!',
+        message: `Successfully cancelled unstaking of ${selectedUnstakingAsset.amount} ${selectedUnstakingAsset.asset} from ${selectedUnstakingAsset.chainName}`
+      });
+
+      // Refresh portfolio data
+      setTimeout(() => {
+        fetchPortfolioData();
+      }, 2000);
+
+    } catch (error: any) {
+      console.error('Cancel unstaking error:', error);
+      
+      let errorMessage = 'Failed to cancel unstaking';
+      if (error?.message) {
+        if (error.message.includes('Request rejected')) {
+          errorMessage = 'Transaction was rejected by the user';
+        } else if (error.message.includes('insufficient funds')) {
+          errorMessage = 'Insufficient funds for transaction fee';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      setTransactionResultModal({
+        isOpen: true,
+        success: false,
+        chainName: selectedUnstakingAsset.chainName,
+        amount: selectedUnstakingAsset.amount,
+        tokenSymbol: selectedUnstakingAsset.asset,
+        errorMessage: errorMessage,
+        transactionType: 'cancel_undelegate'
+      });
+
+      showToast({
+        type: 'error',
+        title: 'Cancel Unstaking Failed',
+        message: errorMessage
+      });
+    } finally {
+      setIsTransactionInProgress(false);
+    }
+  }, [selectedUnstakingAsset, isTransactionInProgress, showToast, keplrPublicKey, createTransactionRecord, setTransactionResultModal, fetchPortfolioData]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -2760,6 +3058,101 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
                   </>
                 ) : (
                   'Claim Rewards'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Cancel Unstaking Modal */}
+      {showCancelUnstakingModal && selectedUnstakingAsset && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 w-full max-w-md mx-4`}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Cancel Unstaking
+              </h3>
+              <button
+                onClick={() => setShowCancelUnstakingModal(false)}
+                className={`p-2 rounded-lg hover:${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} transition-colors`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                  <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    This chain supports the cancellation of unstaking in progress.
+                  </span>
+                </div>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Are you sure you want to cancel your unstaking request?
+                </p>
+              </div>
+
+              <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>
+                  <strong>This will reset the unstaking period and stake the tokens back to the validator.</strong>
+                </p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Amount:</span>
+                    <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {selectedUnstakingAsset.amount} {selectedUnstakingAsset.asset}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Chain:</span>
+                    <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {selectedUnstakingAsset.chainName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Days Remaining:</span>
+                    <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {selectedUnstakingAsset.daysRemaining || 0} days
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowCancelUnstakingModal(false)}
+                disabled={isTransactionInProgress}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                  isDarkMode 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-900'
+                } ${isTransactionInProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                Close
+              </button>
+              <button
+                onClick={handleCancelUnstakingSubmit}
+                disabled={isTransactionInProgress}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium text-white transition-colors ${
+                  isTransactionInProgress
+                    ? 'bg-gray-500 cursor-not-allowed'
+                    : 'bg-teal-600 hover:bg-teal-700'
+                }`}
+              >
+                {isTransactionInProgress ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Processing...
+                  </div>
+                ) : (
+                  'Confirm'
                 )}
               </button>
             </div>

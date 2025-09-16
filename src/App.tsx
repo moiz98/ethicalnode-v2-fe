@@ -18,6 +18,7 @@ import HalalScreenerManagement from './pages/admin/HalalScreenerManagement';
 import ValidatorManagement from './pages/admin/ValidatorManagement';
 import InvestorManagement from './pages/admin/InvestorManagement';
 import OrgReferralCodeManagement from './pages/admin/OrgReferralCodeManagement';
+import RewardsWalletsManagement from './pages/admin/RewardsWalletsManagement';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AdminToastIntegration from './components/AdminToastIntegration';
@@ -128,6 +129,7 @@ function App() {
                     <Route path="halal-screener" element={<HalalScreenerManagement />} />
                     <Route path="validators" element={<ValidatorManagement />} />
                     <Route path="org-referral-codes" element={<OrgReferralCodeManagement />} />
+                    <Route path="rewards-wallets" element={<RewardsWalletsManagement />} />
                   </Route>
                 </Routes>
               </AdminToastIntegration>

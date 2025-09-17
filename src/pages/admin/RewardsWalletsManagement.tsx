@@ -291,8 +291,10 @@ const RewardsWalletsManagement: React.FC = () => {
   // Format balance display
   const formatBalance = (balance: { amount: string; denom: string; formatted: string }) => {
     const amount = parseFloat(balance.amount);
+    if (isNaN(amount)) return '0';
     if (amount === 0) return '0';
-    if (amount < 0.001) return '<0.001';
+    if (amount < 0.000001) return '<0.000001';
+    if (amount < 0.001) return amount.toFixed(6);
     if (amount < 1) return amount.toFixed(6);
     if (amount < 1000) return amount.toFixed(3);
     if (amount < 1000000) return (amount / 1000).toFixed(2) + 'K';
@@ -319,12 +321,23 @@ const RewardsWalletsManagement: React.FC = () => {
         result = await adminApiClient.get(`/investors/getCosmosBalance/${wallet.chainId}/${wallet.publicAddress}`);
       }
 
+      console.log('Balance API result for', wallet.chainId, ':', result);
+
       if (result.success && result.data) {
-        return {
-          amount: result.data.amount || '0',
-          denom: result.data.denom || 'unknown',
-          formatted: result.data.formatted || `${result.data.amount || '0'} ${result.data.denom || 'unknown'}`
-        };
+        // Handle the actual backend response structure
+        const balanceData = result.data.balance || result.data;
+        
+        if (balanceData && balanceData.amount && balanceData.denom) {
+          // Convert from base units to display units
+          const amount = parseFloat(balanceData.amount);
+          const displayAmount = amount / 1000000; // Assuming 6 decimal places for most tokens
+          
+          return {
+            amount: displayAmount.toString(),
+            denom: balanceData.denom.replace('u', '').toUpperCase(), // Convert uakt to AKT
+            formatted: `${displayAmount.toFixed(6)} ${balanceData.denom.replace('u', '').toUpperCase()}`
+          };
+        }
       }
       return null;
     } catch (error) {

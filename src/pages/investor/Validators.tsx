@@ -606,7 +606,7 @@ const Validators: React.FC = () => {
       setError(null);
 
       console.log('Fetching validators...');
-      const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/validators');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/validators`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch validators');

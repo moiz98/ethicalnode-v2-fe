@@ -39,16 +39,38 @@ class AdminApiClient {
 
   // Check if error indicates token expiration
   private isTokenExpiredError(status: number, message?: string): boolean {
-    return (
-      status === 401 || 
-      status === 403 ||
-      !!(message && (
-        message.toLowerCase().includes('token expired') ||
-        message.toLowerCase().includes('invalid token') ||
-        message.toLowerCase().includes('unauthorized') ||
-        message.toLowerCase().includes('jwt expired')
-      ))
-    );
+    // 401 is always unauthorized/token expired
+    if (status === 401) {
+      return true;
+    }
+    
+    // 403 can be either token expiration or insufficient permissions
+    // Only treat as token expiration if message specifically indicates token issues
+    if (status === 403 && message) {
+      const lowerMessage = message.toLowerCase();
+      return (
+        lowerMessage.includes('token expired') ||
+        lowerMessage.includes('invalid token') ||
+        lowerMessage.includes('jwt expired') ||
+        lowerMessage.includes('token is invalid') ||
+        lowerMessage.includes('session expired')
+      );
+    }
+    
+    // Check message-based token expiration indicators
+    if (message) {
+      const lowerMessage = message.toLowerCase();
+      return (
+        lowerMessage.includes('token expired') ||
+        lowerMessage.includes('invalid token') ||
+        lowerMessage.includes('unauthorized') ||
+        lowerMessage.includes('jwt expired') ||
+        lowerMessage.includes('token is invalid') ||
+        lowerMessage.includes('session expired')
+      );
+    }
+    
+    return false;
   }
 
   // Handle token refresh with concurrency control
@@ -115,6 +137,7 @@ class AdminApiClient {
       // Check for token expiration
       if (!response.ok && this.isTokenExpiredError(response.status, result.message)) {
         console.warn('Admin token has expired, triggering re-authentication...');
+        console.log('Status:', response.status, 'Message:', result.message);
         
         try {
           // Use centralized token refresh handling
@@ -130,6 +153,8 @@ class AdminApiClient {
       }
 
       if (!response.ok) {
+        // Log the error for debugging, but don't treat as token expiration
+        console.log('API Error - Status:', response.status, 'Message:', result.message);
         throw new Error(result.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 

@@ -27,8 +27,8 @@ export async function testNamadaSDK() {
     // Test 3: Try creating SDK instance (without RPC)
     console.log('✅ Test 3: SDK instantiation test (dry run)');
     try {
-      const { initSdk } = await import('@namada/sdk/inline');
-      console.log('  - initSdk function ready');
+      await import('@namada/sdk/inline');
+      console.log('  - SDK module imported successfully');
       
       // Don't actually initialize to avoid network calls
       console.log('  - Skipping actual initialization to avoid network calls');

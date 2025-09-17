@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Search, Filter, RefreshCw, Calendar, DollarSign, User, Activity, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Search, Filter, RefreshCw, Calendar, DollarSign, User, Activity, CheckCircle, XCircle } from 'lucide-react';
 import adminApiClient from '../../utils/adminApiClient';
 
 interface Transaction {

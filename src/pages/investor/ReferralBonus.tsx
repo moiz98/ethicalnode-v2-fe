@@ -29,78 +29,16 @@ interface ReferralData {
   }>;
 }
 
-interface PriceData {
-  [key: string]: {
-    usd: number;
-    usd_market_cap: number;
-    usd_24h_vol?: number;
-    usd_24h_change: number;
-  };
-}
-
 const ReferralBonus: React.FC = () => {
   const { isDarkMode } = useTheme();
   const { keplrPublicKey, isConnected } = useWallet();
   const [referralData, setReferralData] = useState<ReferralData | null>(null);
-  const [priceData, setPriceData] = useState<PriceData>({});
   const [loading, setLoading] = useState(true);
-  const [priceLoading, setPriceLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [selectedBonus, setSelectedBonus] = useState<any>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
-
-  // Fetch pricing data from backend API
-  const fetchPricingData = async () => {
-    try {
-      setPriceLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/prices`);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Full pricing API response:', result);
-        
-        // Handle the actual response structure: data.prices.assets.validators
-        const assets = result.data?.prices?.assets;
-        console.log('Extracted assets:', assets);
-        
-        if (result.success && assets) {
-          // Transform the backend response to match our expected format
-          const transformedPrices: PriceData = {};
-          
-          // Get prices from validators array and also halalScreener
-          const allAssets = [
-            ...(assets.validators || []),
-            ...(assets.halalScreener || [])
-          ];
-          
-          console.log('All assets combined:', allAssets);
-          
-          allAssets.forEach((asset: any) => {
-            console.log('Processing asset:', asset);
-            if (asset.coinGeckoId && asset.price) {
-              transformedPrices[asset.coinGeckoId] = {
-                usd: asset.price.usd,
-                usd_market_cap: asset.price.usd_market_cap,
-                usd_24h_change: asset.price.usd_24h_change,
-              };
-              console.log(`Added price for ${asset.coinGeckoId}:`, asset.price.usd);
-            }
-          });
-          
-          console.log('Final transformed prices:', transformedPrices);
-          setPriceData(transformedPrices);
-          return transformedPrices;
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching pricing data:', error);
-    } finally {
-      setPriceLoading(false);
-    }
-    return {};
-  };
 
   // Get chain name, symbol, and exponent from denom using chain registry data
   const getChainInfo = (denom: string) => {
@@ -148,11 +86,8 @@ const ReferralBonus: React.FC = () => {
     }
 
     try {
-      // Fetch both investor data and pricing data concurrently
-      const [investorResponse, pricesData] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicKey}`),
-        fetchPricingData()
-      ]);
+      // Fetch investor data
+      const investorResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicKey}`);
       
       if (!investorResponse.ok) {
         throw new Error(`HTTP error! status: ${investorResponse.status}`);
@@ -166,38 +101,24 @@ const ReferralBonus: React.FC = () => {
         console.log('Investor data:', investorData);
         console.log('Referral bonuses from API:', investorData.referralBonuses);
         
-        // Transform referral bonuses with pricing data
+        // Transform referral bonuses
         const referralBonuses = investorData.referralBonuses?.map((bonus: any) => {
           console.log('Processing bonus:', bonus);
           const chainInfo = getChainInfo(bonus.denom);
           console.log('Chain info for', bonus.denom, ':', chainInfo);
-          
-          const priceUSD = chainInfo.coinGeckoId && pricesData[chainInfo.coinGeckoId] 
-            ? pricesData[chainInfo.coinGeckoId].usd 
-            : 0;
-            
-          console.log(`Price lookup: coinGeckoId=${chainInfo.coinGeckoId}, priceUSD=${priceUSD}`);
-          console.log('Available prices:', Object.keys(pricesData));
           
           // Convert from base denom to display denom using the correct exponent
           const divisor = Math.pow(10, chainInfo.exponent);
           const rewardEarned = bonus.rewardEarned / divisor;
           const reward = bonus.reward / divisor;
           
-          // Calculate USD values
-          const rewardEarnedUSD = rewardEarned * priceUSD;
-          const rewardUSD = reward * priceUSD;
-          
           console.log(`Bonus calculation for ${bonus.denom}:`, {
             originalReward: bonus.reward,
             originalRewardEarned: bonus.rewardEarned,
             chainInfo,
-            priceUSD,
             divisor,
             convertedReward: reward,
-            convertedRewardEarned: rewardEarned,
-            rewardUSD,
-            rewardEarnedUSD
+            convertedRewardEarned: rewardEarned
           });
           
           return {
@@ -206,24 +127,19 @@ const ReferralBonus: React.FC = () => {
             symbol: chainInfo.symbol,
             rewardEarned,
             reward,
-            priceUSD,
-            rewardEarnedUSD,
-            rewardUSD,
           };
         }) || [];
         
         // Calculate totals
         const totalBonusEarned = referralBonuses.reduce((sum: number, bonus: any) => sum + bonus.rewardEarned, 0);
-        const totalBonusEarnedUSD = referralBonuses.reduce((sum: number, bonus: any) => sum + (bonus.rewardEarnedUSD || 0), 0);
-        const totalClaimableUSD = referralBonuses.reduce((sum: number, bonus: any) => sum + (bonus.rewardUSD || 0), 0);
         
         // Transform the API response to match our interface
         const transformedData: ReferralData = {
           referralCode: keplrPublicKey,
           totalReferred: result.data.countReferredByInvestors || 0,
           totalBonusEarned,
-          totalBonusEarnedUSD,
-          totalClaimableUSD,
+          totalBonusEarnedUSD: 0, // Price data not available
+          totalClaimableUSD: 0, // Price data not available
           referralBonuses,
           referredUsers: investorData.referredUsers || []
         };

@@ -35,7 +35,7 @@ interface ApiResponse {
 
 const Settings: React.FC = () => {
   const { isDarkMode } = useTheme();
-  const { keplrAddress, keplrPublicKey, namadaAddress, isConnected } = useWallet();
+  const { keplrPublicKey, isConnected } = useWallet();
   const [profile, setProfile] = useState<InvestorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

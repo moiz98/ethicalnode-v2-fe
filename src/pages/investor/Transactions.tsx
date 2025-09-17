@@ -89,7 +89,7 @@ const Transactions: React.FC = () => {
         queryParams.append('chainId', chainFilter);
       }
 
-      const apiUrl = `http://localhost:3000/api/transactions/investor/${primaryAddress}?${queryParams}`;
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/transactions/investor/${primaryAddress}?${queryParams}`;
       console.log('API URL:', apiUrl);
 
       const response = await fetch(apiUrl);

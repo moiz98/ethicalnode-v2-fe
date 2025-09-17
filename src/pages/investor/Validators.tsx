@@ -233,7 +233,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               console.log('Namada wallet address:', walletAddress);
               
               // Call backend API for Namada balance directly
-              const response = await fetch(`http://localhost:3000/api/investors/getNamadaBalance/${walletAddress}`);
+              const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getNamadaBalance/${walletAddress}`);
               
               if (response.ok) {
                 const result = await response.json();
@@ -280,7 +280,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             console.log('Keplr wallet address:', walletAddress);
             
             // Call backend API for Cosmos balance
-            const response = await fetch(`http://localhost:3000/api/investors/getCosmosBalance/${chainId}/${walletAddress}`);
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getCosmosBalance/${chainId}/${walletAddress}`);
             
             if (response.ok) {
               const result = await response.json();
@@ -606,7 +606,7 @@ const Validators: React.FC = () => {
       setError(null);
 
       console.log('Fetching validators...');
-      const response = await fetch('http://localhost:3000/api/validators');
+      const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/validators');
       
       if (!response.ok) {
         throw new Error('Failed to fetch validators');
@@ -699,9 +699,9 @@ const Validators: React.FC = () => {
       };
       
       console.log('📝 Creating transaction record with data:', JSON.stringify(serializableData, null, 2));
-      console.log('🌐 Making POST request to:', 'http://localhost:3000/api/transactions');
+      console.log('🌐 Making POST request to:', '${import.meta.env.VITE_API_BASE_URL}/api/transactions');
       
-      const response = await fetch('http://localhost:3000/api/transactions', {
+      const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -754,7 +754,7 @@ const Validators: React.FC = () => {
             let workingRpc = null;
             try {
               console.log('Fetching Namada RPC endpoints from backend for chain:', validator.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${validator.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${validator.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();
@@ -998,7 +998,7 @@ const Validators: React.FC = () => {
             let workingRpc = null;
             try {
               console.log('Fetching RPC endpoints from backend for chain:', validator.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${validator.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${validator.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();

@@ -149,7 +149,7 @@ export class NamadaWalletManager {
       console.log('Wallet address:', this.address);
 
       // Call backend API for Namada balance
-      const response = await fetch(`http://localhost:3000/api/investors/getNamadaBalance/${this.address}`);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getNamadaBalance/${this.address}`);
       
       if (response.ok) {
         const result = await response.json();

@@ -50,7 +50,7 @@ const Networks: React.FC = () => {
 
       console.log('Fetching validators for Networks component...');
 
-      const response = await fetch('http://localhost:3000/api/validators');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/validators`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch data');

@@ -85,7 +85,7 @@ export const AdminAuthProvider: React.FC<AdminAuthProviderProps> = ({ children }
     }
 
     // Send to backend for verification
-    const response = await fetch('http://localhost:3000/api/admin/login', {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

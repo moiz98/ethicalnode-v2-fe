@@ -17,7 +17,7 @@ class AdminApiClient {
   private isRefreshing: boolean = false;
   private refreshPromise: Promise<void> | null = null;
 
-  constructor(baseUrl: string = 'http://localhost:3000/api') {
+  constructor(baseUrl: string = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api`) {
     this.baseUrl = baseUrl;
   }
 

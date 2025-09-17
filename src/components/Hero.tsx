@@ -21,7 +21,7 @@ const HeroSection = () => {
   useEffect(() => {
     const fetchPlatformStats = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/stats');
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/stats`);
         const result = await response.json();
         
         if (result.success && result.data) {

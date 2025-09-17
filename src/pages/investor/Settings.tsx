@@ -54,7 +54,7 @@ const Settings: React.FC = () => {
 
     try {
       setRefreshing(true);
-      const response = await fetch(`http://localhost:3000/api/investors/${keplrPublicKey}`);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicKey}`);
       
       if (response.ok) {
         const result: ApiResponse = await response.json();
@@ -89,7 +89,7 @@ const Settings: React.FC = () => {
     setReferrerError(null);
     
     try {
-      const response = await fetch(`http://localhost:3000/api/investors/${keplrPublicKey}/set-referrer`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicKey}/set-referrer`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -247,7 +247,7 @@ const InvestorManagement: React.FC = () => {
   const fetchPricingData = async () => {
     try {
       console.log('Fetching pricing data...');
-      const response = await fetch('http://localhost:3000/api/investors/prices');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/prices`);
       
       if (response.ok) {
         const result = await response.json();
@@ -324,8 +324,8 @@ const InvestorManagement: React.FC = () => {
       // Fetch pricing data and investor data concurrently
       const [pricesData, investorResponse, transactionsResponse] = await Promise.all([
         fetchPricingData(),
-        fetch(`http://localhost:3000/api/investors/${keplrPublicAddress}`),
-        fetch(`http://localhost:3000/api/transactions/investor/${keplrPublicAddress}?limit=4`).catch(() => null)
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicAddress}`),
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/transactions/investor/${keplrPublicAddress}?limit=4`).catch(() => null)
       ]);
       
       console.log('Pricing data received:', pricesData);

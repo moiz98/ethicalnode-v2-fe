@@ -57,7 +57,7 @@ const AdminDashboard: React.FC = () => {
   // Fetch platform statistics from API
   const fetchPlatformStats = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/stats');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/stats`);
       const result = await response.json();
       
       if (result.success && result.data) {
@@ -89,7 +89,7 @@ const AdminDashboard: React.FC = () => {
   const handleDownloadLogs = async () => {
     setDownloadingLogs(true);
     try {
-      const response = await fetch('http://localhost:3000/api/admin/logs/download', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/logs/download`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('adminToken')}`,

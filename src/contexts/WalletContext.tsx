@@ -165,7 +165,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       console.log('📡 Making POST request to investor API...');
       console.log('📡 Full payload being sent:', JSON.stringify(payload, null, 2));
       
-      const response = await fetch('http://localhost:3000/api/investors', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

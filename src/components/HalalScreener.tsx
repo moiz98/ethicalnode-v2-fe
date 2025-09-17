@@ -67,7 +67,7 @@ const HalalScreener = () => {
         isInitializingRef.current = true; // Mark as in progress
         setLoading(true);
         console.log('Fetching halal screeners...');
-        const response = await fetch('http://localhost:3000/api/halal-screener');
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/halal-screener`);
         
         if (response.ok) {
           const result = await response.json();
@@ -101,7 +101,7 @@ const HalalScreener = () => {
       console.log('Fetching pricing data from backend API...');
       console.log('Screeners data length:', screenersData.length);
       
-      const response = await fetch('http://localhost:3000/api/investors/prices');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/prices`);
       
       console.log('Response status:', response.status);
       console.log('Response ok:', response.ok);

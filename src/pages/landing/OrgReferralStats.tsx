@@ -95,7 +95,7 @@ const OrgReferralStats: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`http://localhost:3000/api/referral-codes/${orgcode}/validate`);
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/referral-codes/${orgcode}/validate`);
         
         if (!response.ok) {
           if (response.status === 404) {

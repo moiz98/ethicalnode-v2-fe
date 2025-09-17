@@ -55,7 +55,7 @@ const ReferralBonus: React.FC = () => {
   const fetchPricingData = async () => {
     try {
       setPriceLoading(true);
-      const response = await fetch('http://localhost:3000/api/investors/prices');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/prices`);
       
       if (response.ok) {
         const result = await response.json();
@@ -150,7 +150,7 @@ const ReferralBonus: React.FC = () => {
     try {
       // Fetch both investor data and pricing data concurrently
       const [investorResponse, pricesData] = await Promise.all([
-        fetch(`http://localhost:3000/api/investors/${keplrPublicKey}`),
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/${keplrPublicKey}`),
         fetchPricingData()
       ]);
       
@@ -262,7 +262,7 @@ const ReferralBonus: React.FC = () => {
     setClaimError(null);
     
     try {
-      const response = await fetch('http://localhost:3000/api/rewards/claim', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/rewards/claim`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

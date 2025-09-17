@@ -99,7 +99,7 @@ const fetchBackendPrices = async (): Promise<Record<string, number>> => {
   try {
     console.log('Fetching prices from backend API...');
     
-    const response = await fetch('http://localhost:3000/api/investors/prices', {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/prices`, {
       headers: {
         'Accept': 'application/json',
       },
@@ -517,21 +517,21 @@ const InvestorPortfolio: React.FC = () => {
 
       // Use Promise.all to make all requests simultaneously to avoid double calls
       const [balancesResponse, stakingResponse, unstakingResponse] = await Promise.all([
-        fetch('http://localhost:3000/api/investors/getBalances', {
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getBalances`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
         }),
-        fetch('http://localhost:3000/api/investors/getStakingPositions', {
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getStakingPositions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
         }),
-        fetch('http://localhost:3000/api/investors/getUnstakingPositions', {
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/investors/getUnstakingPositions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -836,9 +836,9 @@ const InvestorPortfolio: React.FC = () => {
       };
       
       console.log('📝 Creating transaction record with data:', JSON.stringify(serializableData, null, 2));
-      console.log('🌐 Making POST request to:', 'http://localhost:3000/api/transactions');
-      
-      const response = await fetch('http://localhost:3000/api/transactions', {
+      console.log('🌐 Making POST request to:', `${import.meta.env.VITE_API_BASE_URL}/api/transactions`);
+
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -899,7 +899,7 @@ const InvestorPortfolio: React.FC = () => {
             let workingRpc = null;
             try {
               console.log('Fetching Namada RPC endpoints from backend for chain:', selectedAsset.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${selectedAsset.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();
@@ -1145,7 +1145,7 @@ const InvestorPortfolio: React.FC = () => {
             let workingRpc = null;
             try {
               console.log('Fetching RPC endpoints from backend for chain:', selectedAsset.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${selectedAsset.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();
@@ -1397,7 +1397,7 @@ const InvestorPortfolio: React.FC = () => {
             let workingRpc = null;
             try {
               console.log('Fetching Namada RPC endpoints from backend for chain:', selectedAsset.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${selectedAsset.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();
@@ -1665,7 +1665,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
             let workingRpc = null;
             try {
               console.log('Fetching RPC endpoints from backend for chain:', selectedAsset.chainId);
-              const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedAsset.chainId}`);
+              const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${selectedAsset.chainId}`);
               
               if (apiResponse.ok) {
                 const apiData = await apiResponse.json();
@@ -1920,7 +1920,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
       let workingRpc = null;
       try {
         console.log('Fetching RPC endpoints from backend for chain:', selectedUnstakingAsset.chainId);
-        const apiResponse = await fetch(`http://localhost:3000/api/apis/${selectedUnstakingAsset.chainId}`);
+        const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${selectedUnstakingAsset.chainId}`);
         
         if (apiResponse.ok) {
           const apiData = await apiResponse.json();

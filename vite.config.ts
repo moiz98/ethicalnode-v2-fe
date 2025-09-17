@@ -11,9 +11,11 @@ export default defineConfig({
   ],
   define: {
     global: 'globalThis',
+    'process.env.NODE_ENV': JSON.stringify('production')
   },
   optimizeDeps: {
     include: ['buffer', 'process'],
+    force: true,
     esbuildOptions: {
       define: {
         global: 'globalThis'
@@ -32,16 +34,31 @@ export default defineConfig({
       process: 'process/browser',
     }
   },
+  esbuild: {
+    supported: {
+      'top-level-await': true
+    }
+  },
   build: {
     target: 'esnext',
     sourcemap: true,
+    commonjsOptions: {
+      include: ['buffer', 'process', /node_modules/],
+      transformMixedEsModules: true,
+      defaultIsModuleExports: 'auto'
+    },
     rollupOptions: {
       plugins: [
         NodeGlobalsPolyfillPlugin({
           buffer: true,
           process: true
         }) as any
-      ]
+      ],
+      output: {
+        manualChunks: {
+          'polyfills': ['buffer', 'process']
+        }
+      }
     }
   }
 })

@@ -10,9 +10,20 @@
     <meta name="author" content="Ethical Node" />
     <meta name="Developer" content="connect@itsmemoiz.me" />
 
-    <!-- Set up Buffer polyfill before any modules load -->
+    <!-- Set up global polyfills before any modules load -->
     <script>
       window.global = window.global ?? window;
+      // Buffer polyfill setup
+      if (typeof window.Buffer === 'undefined') {
+        window.Buffer = { from: function() { return {}; }, alloc: function() { return {}; } };
+      }
+      // Process polyfill setup
+      window.process = window.process || {
+        env: {},
+        version: '',
+        platform: 'browser',
+        nextTick: function(fn) { setTimeout(fn, 0); }
+      };
     </script>
 
     <!-- Open Graph (Facebook, LinkedIn) -->

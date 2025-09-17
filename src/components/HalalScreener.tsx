@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, TrendingUp, X, Info } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface HalalScreenerData {
   _id: string;
@@ -38,6 +38,8 @@ const HalalScreener = () => {
   const [loading, setLoading] = useState(true);
   const [priceLoading, setPriceLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [hasInitialized, setHasInitialized] = useState(false); // Add initialization flag
+  const isInitializingRef = useRef(false); // Track if initialization is in progress
   const [popupInfo, setPopupInfo] = useState<{
     isOpen: boolean;
     type: 'trading' | 'staking' | null;
@@ -54,17 +56,27 @@ const HalalScreener = () => {
 
   // Fetch halal screeners from API
   useEffect(() => {
+    // Prevent duplicate calls in React Strict Mode or component remounts
+    if (hasInitialized || isInitializingRef.current) {
+      console.log('Skipping API call - already initialized or in progress');
+      return;
+    }
+
     const fetchScreeners = async () => {
       try {
+        isInitializingRef.current = true; // Mark as in progress
         setLoading(true);
+        console.log('Fetching halal screeners...');
         const response = await fetch('http://localhost:3000/api/halal-screener');
         
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.data?.screeners) {
-            setScreeners(result.data.screeners);
-            // Fetch pricing data after getting screeners
-            await fetchPricingData();
+            const screenersData = result.data.screeners;
+            console.log('Screeners fetched:', screenersData.length);
+            setScreeners(screenersData);
+            // Fetch pricing data with the fresh screeners data
+            await fetchPricingDataForScreeners(screenersData);
           }
         } else {
           console.error('Failed to fetch halal screeners');
@@ -73,18 +85,22 @@ const HalalScreener = () => {
         console.error('Error fetching screeners:', error);
       } finally {
         setLoading(false);
+        setHasInitialized(true); // Mark as initialized
+        isInitializingRef.current = false; // Reset the ref
       }
     };
 
     fetchScreeners();
-  }, []);
+  }, [hasInitialized]); // Add hasInitialized as dependency
 
   // Fetch pricing data from backend API with CoinGecko fallback
-  const fetchPricingData = async () => {
+  const fetchPricingDataForScreeners = async (screenersData: HalalScreenerData[]) => {
     try {
       setPriceLoading(true);
       
       console.log('Fetching pricing data from backend API...');
+      console.log('Screeners data length:', screenersData.length);
+      
       const response = await fetch('http://localhost:3000/api/investors/prices');
       
       console.log('Response status:', response.status);
@@ -125,23 +141,23 @@ const HalalScreener = () => {
       
       // Fallback to CoinGecko API if backend fails
       console.log('Falling back to CoinGecko API...');
-      await fetchCoinGeckoFallback();
+      await fetchCoinGeckoFallback(screenersData);
       
     } catch (error) {
       console.error('Error fetching pricing data:', error);
       // Try CoinGecko fallback
       console.log('Attempting CoinGecko fallback due to error...');
-      await fetchCoinGeckoFallback();
+      await fetchCoinGeckoFallback(screenersData);
     } finally {
       setPriceLoading(false);
     }
   };
 
   // Fallback function to use CoinGecko API directly
-  const fetchCoinGeckoFallback = async () => {
+  const fetchCoinGeckoFallback = async (screenersData: HalalScreenerData[]) => {
     try {
       // Get unique CoinGecko IDs from screeners
-      const coinGeckoIds = screeners
+      const coinGeckoIds = screenersData
         .filter(screener => screener.coinGeckoId && screener.isActive)
         .map(screener => screener.coinGeckoId)
         .filter((id, index, array) => array.indexOf(id) === index);

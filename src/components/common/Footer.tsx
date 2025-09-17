@@ -94,7 +94,7 @@ const Footer = () => {
           <div className={`text-sm ${
             isDarkMode ? 'text-gray-500' : 'text-gray-500'
           }`}>
-            © 2024 EthicalNode. All rights reserved.
+            © 2025 EthicalNode. All rights reserved.
           </div>
         </motion.div>
       </div>

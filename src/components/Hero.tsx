@@ -1,9 +1,65 @@
 import { motion } from "framer-motion";
 import { Globe, Moon, Scale, Shield, TrendingUp, Users, BookOpen, Award } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
+import { useState, useEffect } from "react";
+
+interface PlatformStats {
+  total_value_staked: number;
+  active_delegators: number;
+  total_users: number;
+  active_chains: number;
+  total_value_commission: number;
+  last_updated: string;
+}
 
 const HeroSection = () => {
   const { isDarkMode } = useTheme();
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Fetch platform statistics from API
+  useEffect(() => {
+    const fetchPlatformStats = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/api/stats');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setPlatformStats(result.data);
+        }
+      } catch (err) {
+        console.error('Error fetching platform stats:', err);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    fetchPlatformStats();
+  }, []);
+
+  // Format currency helper
+  const formatCurrency = (value: number) => {
+    if (value >= 1e9) {
+      return `$${(value / 1e9).toFixed(1)}B`;
+    } else if (value >= 1e6) {
+      return `$${(value / 1e6).toFixed(1)}M`;
+    } else if (value >= 1e3) {
+      return `$${(value / 1e3).toFixed(1)}K`;
+    } else {
+      return `$${value.toFixed(0)}`;
+    }
+  };
+
+  // Format number helper
+  const formatNumber = (value: number) => {
+    if (value >= 1e6) {
+      return `${(value / 1e6).toFixed(1)}M`;
+    } else if (value >= 1e3) {
+      return `${(value / 1e3).toFixed(1)}K`;
+    } else {
+      return value.toLocaleString();
+    }
+  };
 
   return (
     <div className={`relative w-full min-h-screen ${
@@ -383,7 +439,15 @@ const HeroSection = () => {
               </div>
               <div className={`text-3xl font-bold ${
                 isDarkMode ? "text-white" : "text-gray-900"
-              }`}>$2.8M+</div>
+              }`}>
+                {statsLoading ? (
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+                  </div>
+                ) : (
+                  formatCurrency(platformStats?.total_value_staked || 0)
+                )}
+              </div>
               <div className={isDarkMode ? "text-gray-400" : "text-gray-600"}>Total Value Staked</div>
             </div>
             
@@ -411,7 +475,15 @@ const HeroSection = () => {
               </div>
               <div className={`text-3xl font-bold ${
                 isDarkMode ? "text-white" : "text-gray-900"
-              }`}>1,200+</div>
+              }`}>
+                {statsLoading ? (
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+                  </div>
+                ) : (
+                  formatNumber(platformStats?.active_delegators || 0) + '+'
+                )}
+              </div>
               <div className={isDarkMode ? "text-gray-400" : "text-gray-600"}>Active Delegators</div>
             </div>
           </motion.div>

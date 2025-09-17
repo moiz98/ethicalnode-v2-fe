@@ -279,7 +279,7 @@ const TransactionResultModal: React.FC<TransactionResultModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <motion.div
-        className="fixed inset-0 bg-black bg-opacity-50"
+        className="fixed inset-0 bg-opacity-50"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -2876,7 +2876,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
 
       {/* Unstake Modal */}
       {showUnstakeModal && selectedAsset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -2987,7 +2987,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
 
       {/* Claim Rewards Modal */}
       {showClaimRewardsModal && selectedAsset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -3079,7 +3079,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
 
       {/* Cancel Unstaking Modal */}
       {showCancelUnstakingModal && selectedUnstakingAsset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}

@@ -7,6 +7,7 @@ import PublicLayout from './layouts/PublicLayout';
 import Home from './pages/landing/Home';
 import Blogs from './pages/landing/Blogs';
 import BlogDetail from './pages/landing/BlogDetail';
+import OrgReferralStats from './pages/landing/OrgReferralStats';
 
 // Admin Dashboard Pages
 import AdminDashboardLayout from './layouts/AdminDashboardLayout';
@@ -19,6 +20,7 @@ import ValidatorManagement from './pages/admin/ValidatorManagement';
 import InvestorManagement from './pages/admin/InvestorManagement';
 import OrgReferralCodeManagement from './pages/admin/OrgReferralCodeManagement';
 import RewardsWalletsManagement from './pages/admin/RewardsWalletsManagement';
+import AdminTransactions from './pages/admin/Transactions';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AdminToastIntegration from './components/AdminToastIntegration';
@@ -107,6 +109,9 @@ function App() {
     <Suspense fallback={<Loader />}>
       <ToastProvider>
         <Routes>
+          {/* Organization Referral Stats - Standalone Route */}
+          <Route path="/referral-bonus/orgs/:orgcode" element={<OrgReferralStats />} />
+
           {/* Landing Pages */}
           <Route element={<PublicLayout />} >
             <Route index element={<Home />} />
@@ -130,6 +135,7 @@ function App() {
                     <Route path="validators" element={<ValidatorManagement />} />
                     <Route path="org-referral-codes" element={<OrgReferralCodeManagement />} />
                     <Route path="rewards-wallets" element={<RewardsWalletsManagement />} />
+                    <Route path="transactions" element={<AdminTransactions />} />
                   </Route>
                 </Routes>
               </AdminToastIntegration>

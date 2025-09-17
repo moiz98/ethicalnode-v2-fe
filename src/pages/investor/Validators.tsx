@@ -79,7 +79,7 @@ const TransactionResultModal: React.FC<TransactionResultModalProps> = ({
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <motion.div
-          className="fixed inset-0 bg-black bg-opacity-50"
+          className="fixed inset-0 bg-opacity-50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -368,7 +368,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
         >
           {/* Backdrop */}
           <div 
-            className="absolute inset-0 bg-black bg-opacity-50"
+            className="absolute inset-0 bg-opacity-50"
             onClick={onClose}
           />
           

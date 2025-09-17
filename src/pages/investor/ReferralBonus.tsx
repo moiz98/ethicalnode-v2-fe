@@ -594,7 +594,7 @@ const ReferralBonus: React.FC = () => {
 
       {/* Claim Confirmation Modal */}
       {showClaimModal && selectedBonus && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
           <motion.div
             className={`p-6 rounded-lg max-w-md w-full mx-4 ${
               isDarkMode ? 'bg-gray-800' : 'bg-white'

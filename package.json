@@ -35,7 +35,8 @@
     "tailwindcss": "^4.0.7"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.6.1"
+    "@rollup/rollup-linux-x64-gnu": "4.6.1",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.7"
   },
   "devDependencies": {
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",

@@ -699,9 +699,9 @@ const Validators: React.FC = () => {
       };
       
       console.log('📝 Creating transaction record with data:', JSON.stringify(serializableData, null, 2));
-      console.log('🌐 Making POST request to:', '${import.meta.env.VITE_API_BASE_URL}/api/transactions');
+      console.log('🌐 Making POST request to:', `${import.meta.env.VITE_API_BASE_URL}/api/transactions`);
       
-      const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/transactions', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

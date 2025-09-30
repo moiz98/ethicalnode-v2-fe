@@ -1004,7 +1004,7 @@ const Validators: React.FC = () => {
                 const apiData = await apiResponse.json();
                 console.log('Backend API response for RPCs:', apiData);
                 
-                if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                if (apiData.success && apiData.data && apiData.data.apis && apiData.data.apis.length > 0) {
                   // Test RPC endpoints to find working one (silently)
                   for (const rpcEndpoint of apiData.data.apis) {
                     try {

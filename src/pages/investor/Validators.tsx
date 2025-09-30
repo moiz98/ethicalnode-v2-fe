@@ -1109,10 +1109,16 @@ const Validators: React.FC = () => {
             });
 
             // Use CosmJS delegateTokens method (this handles everything: signing + broadcasting)
-            const result = await client.delegateTokens(
+            const result = await client.signAndBroadcast(
               signerAddress,
-              validator.validatorAddress,
-              coin,
+              [{
+                typeUrl: "/cosmos.staking.v1beta1.MsgDelegate",
+                value: {
+                  delegatorAddress: signerAddress,
+                  validatorAddress: validator.validatorAddress,
+                  amount: coin,
+                },
+              }],
               fee,
               "Staking via EthicalNode"
             );

@@ -1006,7 +1006,7 @@ const Validators: React.FC = () => {
                 
                 if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
                   // Test RPC endpoints to find working one (silently)
-                  for (const rpcEndpoint of apiData.data.rpc) {
+                  for (const rpcEndpoint of apiData.data.apis) {
                     try {
                       console.log(`Testing RPC endpoint: ${rpcEndpoint.address}`);
                       const testResponse = await fetch(`${rpcEndpoint.address}/status`, {

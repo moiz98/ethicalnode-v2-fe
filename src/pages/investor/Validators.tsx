@@ -1008,20 +1008,20 @@ const Validators: React.FC = () => {
                   // Test RPC endpoints to find working one (silently)
                   for (const rpcEndpoint of apiData.data.apis) {
                     try {
-                      console.log(`Testing RPC endpoint: ${rpcEndpoint.address}`);
-                      const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                      console.log(`Testing RPC endpoint: ${rpcEndpoint}`);
+                      const testResponse = await fetch(`${rpcEndpoint}/status`, {
                         method: 'GET',
                         headers: { 'Content-Type': 'application/json' },
                         signal: AbortSignal.timeout(5000) // 5 second timeout
                       });
                       
                       if (testResponse.ok) {
-                        workingRpc = rpcEndpoint.address;
+                        workingRpc = rpcEndpoint;
                         console.log(`Found working RPC: ${workingRpc}`);
                         break;
                       }
                     } catch (rpcTest) {
-                      console.warn(`RPC ${rpcEndpoint.address} not responding`);
+                      console.warn(`RPC ${rpcEndpoint} not responding`);
                       continue;
                     }
                   }

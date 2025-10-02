@@ -1069,7 +1069,7 @@ const Validators: React.FC = () => {
             });
 
             // Get offline signer for transaction signing
-            const offlineSigner = window.keplr.getOfflineSigner(validator.chainId);
+            const offlineSigner = window.keplr.getOfflineSignerOnlyAmino(validator.chainId);
             const accounts = await offlineSigner.getAccounts();
             
             if (!accounts || accounts.length === 0) {

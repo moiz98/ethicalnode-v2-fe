@@ -7,7 +7,7 @@ import { X, AlertTriangle } from 'lucide-react';
 import { assetLists, chains } from 'chain-registry';
 import { Decimal } from '@cosmjs/math';
 import { NamadaWalletManager } from '../../utils/namada';
-import { SigningStargateClient } from '@cosmjs/stargate';
+import { AminoTypes, SigningStargateClient, createStakingAminoConverters, CreateAmino } from '@cosmjs/stargate';
 import { MsgUndelegate } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
 import { MsgWithdrawDelegatorReward } from 'cosmjs-types/cosmos/distribution/v1beta1/tx';
 import { MsgCancelUnbondingDelegation } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
@@ -1216,7 +1216,7 @@ const InvestorPortfolio: React.FC = () => {
             });
 
             // Get offline signer for transaction signing
-            const offlineSigner = window.keplr.getOfflineSigner(selectedAsset.chainId);
+            const offlineSigner = window.keplr.getOfflineSignerOnlyAmino(selectedAsset.chainId);
             const accounts = await offlineSigner.getAccounts();
             
             if (!accounts || accounts.length === 0) {
@@ -1736,7 +1736,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
             });
 
             // Get offline signer for transaction signing
-            const offlineSigner = window.keplr.getOfflineSigner(selectedAsset.chainId);
+            const offlineSigner = window.keplr.getOfflineSignerOnlyAmino(selectedAsset.chainId);
             const accounts = await offlineSigner.getAccounts();
             
             if (!accounts || accounts.length === 0) {
@@ -1912,7 +1912,7 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
       await window.keplr.enable([selectedUnstakingAsset.chainId]);
       
       // Get the offline signer
-      const offlineSigner = window.keplr.getOfflineSigner(selectedUnstakingAsset.chainId);
+      const offlineSigner = window.keplr.getOfflineSignerOnlyAmino(selectedUnstakingAsset.chainId);
       const accounts = await offlineSigner.getAccounts();
       const userAddress = accounts[0].address;
 

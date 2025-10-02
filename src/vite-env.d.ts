@@ -36,6 +36,9 @@ interface Window {
         };
       }>;
     };
+    getOfflineSignerOnlyAmino: (chainId: string) => any;
+    getOfflineSignerAuto: (chainId: string) => Promise<any>;
+    experimentalSuggestChain: (chainInfo: any) => Promise<void>;
     getAllBalances(chainId: string, address: string): Promise<any[]>;
     getBalance(chainId: string, address: string, denom: string): Promise<any>;
     sendTx(chainId: string, tx: {

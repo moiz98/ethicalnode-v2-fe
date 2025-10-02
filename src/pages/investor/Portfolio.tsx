@@ -7,7 +7,7 @@ import { X, AlertTriangle } from 'lucide-react';
 import { assetLists, chains } from 'chain-registry';
 import { Decimal } from '@cosmjs/math';
 import { NamadaWalletManager } from '../../utils/namada';
-import { AminoTypes, SigningStargateClient, createStakingAminoConverters, CreateAmino } from '@cosmjs/stargate';
+import { SigningStargateClient, } from '@cosmjs/stargate';
 import { MsgUndelegate } from 'cosmjs-types/cosmos/staking/v1beta1/tx';
 import { MsgWithdrawDelegatorReward } from 'cosmjs-types/cosmos/distribution/v1beta1/tx';
 import { MsgCancelUnbondingDelegation } from 'cosmjs-types/cosmos/staking/v1beta1/tx';

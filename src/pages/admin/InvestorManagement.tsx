@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Copy, CheckCircle, Users, UserCheck, UserX, Search, Filter, RefreshCw, Eye, X, DollarSign, Wallet, Calendar } from 'lucide-react';
-import adminApiClient from '../../utils/adminApiClient';
+import { Copy, CheckCircle, Users, UserCheck, UserX, Search, Filter, RefreshCw, Eye, X, DollarSign, Wallet, Calendar, TrendingUp } from 'lucide-react';
+import adminApiClient, { ReferralBonusStats } from '../../utils/adminApiClient';
 
 interface Investor {
   _id: string;
@@ -83,6 +83,19 @@ const InvestorManagement: React.FC = () => {
   } | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [priceData, setPriceData] = useState<PriceData>({});
+  const [referralBonusStats, setReferralBonusStats] = useState<ReferralBonusStats | null>(null);
+
+  // Fetch referral bonus stats
+  const fetchReferralBonusStats = async () => {
+    try {
+      const result = await adminApiClient.getReferralBonusStats();
+      if (result.success && result.data) {
+        setReferralBonusStats(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching referral bonus stats:', error);
+    }
+  };
 
   // Fetch investor stats (totals)
   const fetchInvestorStats = async () => {
@@ -499,6 +512,7 @@ const InvestorManagement: React.FC = () => {
   useEffect(() => {
     fetchInvestors();
     fetchInvestorStats();
+    fetchReferralBonusStats();
     fetchPricingData(); // Fetch pricing data on component mount
   }, []);
 
@@ -520,7 +534,7 @@ const InvestorManagement: React.FC = () => {
       </motion.div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
         <motion.div
           className={`p-6 rounded-lg border ${
             isDarkMode 
@@ -587,6 +601,82 @@ const InvestorManagement: React.FC = () => {
               </p>
             </div>
             <UserX className={`h-8 w-8 ${isDarkMode ? 'text-red-400' : 'text-red-500'}`} />
+          </div>
+        </motion.div>
+
+        {/* Referral Bonus Stats Cards */}
+        <motion.div
+          className={`p-6 rounded-lg border ${
+            isDarkMode 
+              ? 'bg-gray-800 border-gray-700' 
+              : 'bg-white border-gray-200 shadow-sm'
+          }`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Investors with Bonuses
+              </p>
+              <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                {referralBonusStats?.investorsWithBonusesCount || 0}
+              </p>
+            </div>
+            <Wallet className={`h-8 w-8 ${isDarkMode ? 'text-purple-400' : 'text-purple-500'}`} />
+          </div>
+        </motion.div>
+
+        <motion.div
+          className={`p-6 rounded-lg border ${
+            isDarkMode 
+              ? 'bg-gray-800 border-gray-700' 
+              : 'bg-white border-gray-200 shadow-sm'
+          }`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Total Claimable USD
+              </p>
+              <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                ${referralBonusStats?.totalStats.totalClaimableUSD?.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }) || '0.00'}
+              </p>
+            </div>
+            <DollarSign className={`h-8 w-8 ${isDarkMode ? 'text-green-400' : 'text-green-500'}`} />
+          </div>
+        </motion.div>
+
+        <motion.div
+          className={`p-6 rounded-lg border ${
+            isDarkMode 
+              ? 'bg-gray-800 border-gray-700' 
+              : 'bg-white border-gray-200 shadow-sm'
+          }`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.6 }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Total Earned USD
+              </p>
+              <p className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                ${referralBonusStats?.totalStats.totalEarnedUSD?.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }) || '0.00'}
+              </p>
+            </div>
+            <TrendingUp className={`h-8 w-8 ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`} />
           </div>
         </motion.div>
       </div>
@@ -1405,7 +1495,7 @@ const InvestorManagement: React.FC = () => {
             initial={{ opacity: 0, x: 300 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 300 }}
-            className="fixed top-20 right-6 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 z-50"
+            className="fixed top-20 right-6 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 z-[9999]"
           >
             <CheckCircle className="h-4 w-4" />
             <span>{copyToast}</span>

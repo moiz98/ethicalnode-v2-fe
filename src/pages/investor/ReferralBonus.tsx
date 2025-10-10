@@ -35,6 +35,7 @@ const ReferralBonus: React.FC = () => {
   const [referralData, setReferralData] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [selectedBonus, setSelectedBonus] = useState<any>(null);
@@ -165,6 +166,15 @@ const ReferralBonus: React.FC = () => {
       navigator.clipboard.writeText(referralCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const copyReferralLink = () => {
+    if (keplrPublicKey) {
+      const referralUrl = `${import.meta.env.VITE_FRONTEND_URL}/${keplrPublicKey}`;
+      navigator.clipboard.writeText(referralUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
     }
   };
 
@@ -418,6 +428,29 @@ const ReferralBonus: React.FC = () => {
               <>
                 <Copy className="h-4 w-4" />
                 <span>Copy</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={copyReferralLink}
+            disabled={!keplrPublicKey}
+            className={`px-4 py-3 rounded-lg flex items-center space-x-2 transition-colors ${
+              copiedLink 
+                ? 'bg-green-500 text-white' 
+                : isDarkMode
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                  : 'bg-purple-500 hover:bg-purple-600 text-white'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {copiedLink ? (
+              <>
+                <CheckCircle className="h-4 w-4" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4" />
+                <span>Copy Link</span>
               </>
             )}
           </button>

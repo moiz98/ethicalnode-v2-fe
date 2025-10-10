@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useReferral } from './ReferralContext';
 
 interface WalletContextType {
   isConnected: boolean;
@@ -32,6 +33,7 @@ interface WalletProviderProps {
 }
 
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
+  const { referrer, clearReferrer } = useReferral();
   const [isConnected, setIsConnected] = useState(false);
   const [keplrConnected, setKeplrConnected] = useState(false);
   const [namadaConnected, setNamadaConnected] = useState(false);
@@ -108,7 +110,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
           // Trigger backend update for the new wallet
           console.log("🔄 Wallet changed - triggering backend update...");
-          const backendUpdateSuccess = await sendWalletDataToBackend(newPublicKey, namadaAddress);
+          const backendUpdateSuccess = await sendWalletDataToBackend(newPublicKey, namadaAddress, referrer);
           
           if (backendUpdateSuccess) {
             console.log("✅ Backend update successful - investor profile updated");
@@ -138,14 +140,15 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     return () => {
       window.removeEventListener("keplr_keystorechange", handleKeplrKeystoreChange);
     };
-  }, [isConnected, keplrAddress, connectionRejected]);
+  }, [isConnected, keplrAddress, connectionRejected, referrer, namadaAddress]);
 
   // Send wallet data to backend
-  const sendWalletDataToBackend = async (keplrPubKey: string | null, namadaAddr: string | null) => {
+  const sendWalletDataToBackend = async (keplrPubKey: string | null, namadaAddr: string | null, currentReferrer: string | null = referrer) => {
     console.log('🌐 === Sending wallet data to backend ===');
     console.log('📦 Payload data:');
     console.log('  - Keplr Public Key:', keplrPubKey);
     console.log('  - Namada Address:', namadaAddr);
+    console.log('  - Referrer:', currentReferrer);
 
     if (!keplrPubKey) {
       console.warn('⚠️ No Keplr public key to send to backend');
@@ -153,13 +156,19 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
 
     try {
-      const payload: { KeplrPublicAddress: string; namadaWalletAddress?: string } = {
+      const payload: { KeplrPublicAddress: string; namadaWalletAddress?: string; referredBy?: string } = {
         KeplrPublicAddress: keplrPubKey
       };
 
       // Only include namadaWalletAddress if it's available
       if (namadaAddr) {
         payload.namadaWalletAddress = namadaAddr;
+      }
+
+      // Include referredBy if referrer exists
+      if (currentReferrer) {
+        payload.referredBy = currentReferrer;
+        console.log('📋 Including referrer in payload:', currentReferrer);
       }
 
       console.log('📡 Making POST request to investor API...');
@@ -186,6 +195,11 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         
         if (result.data?.isNewInvestor) {
           console.log('🎉 New investor profile created!');
+          // Clear referrer after successful new investor creation
+          if (currentReferrer) {
+            console.log('📋 Clearing referrer after successful registration');
+            clearReferrer();
+          }
         } else {
           console.log('🔄 Existing investor profile updated');
         }
@@ -311,6 +325,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
   const connectWallets = async (): Promise<void> => {
     console.log('🚀 ============ STARTING WALLET CONNECTION PROCESS ============');
+    console.log('📋 Current referrer state:', referrer);
     setIsLoading(true);
     setError(null);
     setConnectionRejected(false);
@@ -330,7 +345,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         
         // Step 3a: Send only Keplr data to backend
         console.log('📱 Step 3a: Sending only Keplr data to backend...');
-        await sendWalletDataToBackend(keplrData.publicKey, null);
+        await sendWalletDataToBackend(keplrData.publicKey, null, referrer);
         console.log('✅ Step 3a complete: Backend request sent with Keplr only');
       } else {
         console.log('📱 Step 2: Connecting Namada wallet...');
@@ -340,7 +355,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           
           // Step 3b: Send data to backend with both wallets
           console.log('📱 Step 3b: Sending wallet data to backend...');
-          await sendWalletDataToBackend(keplrData.publicKey, namadaData.address);
+          await sendWalletDataToBackend(keplrData.publicKey, namadaData.address, referrer);
           console.log('✅ Step 3b complete: Backend request sent');
         } catch (namadaError: any) {
           console.error('❌ Failed to connect Namada:', namadaError);
@@ -349,7 +364,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           
           // Step 3c: Send only Keplr data to backend
           console.log('📱 Step 3c: Sending only Keplr data to backend...');
-          await sendWalletDataToBackend(keplrData.publicKey, null);
+          await sendWalletDataToBackend(keplrData.publicKey, null, referrer);
           console.log('✅ Step 3c complete: Backend request sent with Keplr only');
         }
       }

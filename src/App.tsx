@@ -117,6 +117,8 @@ function App() {
             <Route index element={<Home />} />
             <Route path="/blogs" element={<Blogs />} />
             <Route path="/blog/:slug" element={<BlogDetail />} />
+            {/* Referral route - catch referrer parameter */}
+            <Route path="/:referrer" element={<Home />} />
             <Route path='*' element={<Home />} />
           </Route>
 

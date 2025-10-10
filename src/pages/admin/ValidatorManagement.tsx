@@ -409,8 +409,26 @@ const ValidatorManagement: React.FC = () => {
 
       console.log('Chain enabled successfully:', result);
 
-      setCopyToast(`✅ ${selectedChain.prettyName} chain enabled with validator!`);
-      setTimeout(() => setCopyToast(null), 3000);
+      // After successfully creating the validator, create a reward wallet for this chain
+      try {
+        console.log('Creating reward wallet for chain:', selectedChain.chainId);
+        const rewardWalletResult = await adminApi.post('/admin/rewards-wallets', {
+          chainId: selectedChain.chainId
+        });
+
+        if (rewardWalletResult.success) {
+          console.log('Reward wallet created successfully:', rewardWalletResult.data);
+          setCopyToast(`✅ ${selectedChain.prettyName} chain enabled with validator and reward wallet created!`);
+        } else {
+          console.warn('Validator created but reward wallet creation failed:', rewardWalletResult.message);
+          setCopyToast(`✅ ${selectedChain.prettyName} chain enabled with validator! ⚠️ Reward wallet creation failed: ${rewardWalletResult.message}`);
+        }
+      } catch (walletErr) {
+        console.error('Error creating reward wallet:', walletErr);
+        setCopyToast(`✅ ${selectedChain.prettyName} chain enabled with validator! ⚠️ Reward wallet creation failed: ${walletErr instanceof Error ? walletErr.message : 'Unknown error'}`);
+      }
+
+      setTimeout(() => setCopyToast(null), 5000);
       
       // Refresh enabled chain IDs only if not already done by fetchValidators
       if (activeTab !== 'validators') {

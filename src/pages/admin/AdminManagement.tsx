@@ -335,7 +335,7 @@ const AdminManagement: React.FC = () => {
             initial={{ opacity: 0, y: -50, x: '-50%' }}
             animate={{ opacity: 1, y: 20, x: '-50%' }}
             exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className={`fixed top-4 left-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${
+            className={`fixed top-4 left-1/2 z-[9999] px-4 py-2 rounded-lg shadow-lg ${
               isDarkMode
                 ? 'bg-gray-800 border border-gray-600 text-green-300'
                 : 'bg-white border border-gray-200 text-green-600'

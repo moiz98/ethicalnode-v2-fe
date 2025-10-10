@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
-import adminApiClient from '../../utils/adminApiClient';
+import adminApiClient, { ChainStats } from '../../utils/adminApiClient';
 import { Wallet, Plus, RefreshCw, Eye, Trash2, Copy, X, Loader2, AlertTriangle } from 'lucide-react';
 
 // TypeScript interfaces
@@ -99,6 +99,9 @@ const RewardsWalletsManagement: React.FC = () => {
   // Chain options
   const [chainOptions, setChainOptions] = useState<ChainOption[]>([]);
   const [loadingChains, setLoadingChains] = useState(true);
+  
+  // Chain stats for referral bonuses
+  const [chainStats, setChainStats] = useState<Record<string, ChainStats>>({});
 
   // Toast notification system
   const showToastMessage = (message: string, isError = false) => {
@@ -114,6 +117,23 @@ const RewardsWalletsManagement: React.FC = () => {
     } catch (err) {
       console.error('Failed to copy text: ', err);
       showToastMessage('❌ Failed to copy to clipboard', true);
+    }
+  };
+
+  // Fetch referral bonus stats
+  const fetchReferralBonusStats = async () => {
+    try {
+      const result = await adminApiClient.getReferralBonusStats();
+      if (result.success && result.data?.chainStats) {
+        // Convert array to object with chainId as key
+        const statsMap: Record<string, ChainStats> = {};
+        result.data.chainStats.forEach(stat => {
+          statsMap[stat.chainId] = stat;
+        });
+        setChainStats(statsMap);
+      }
+    } catch (error) {
+      console.error('Error fetching referral bonus stats:', error);
     }
   };
 
@@ -277,16 +297,7 @@ const RewardsWalletsManagement: React.FC = () => {
     }
   };
 
-  // Format date helper
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+
 
   // Format balance display
   const formatBalance = (balance: { amount: string; denom: string; formatted: string }) => {
@@ -299,6 +310,36 @@ const RewardsWalletsManagement: React.FC = () => {
     if (amount < 1000) return amount.toFixed(3);
     if (amount < 1000000) return (amount / 1000).toFixed(2) + 'K';
     return (amount / 1000000).toFixed(2) + 'M';
+  };
+
+  // Format token amount from base units to display units
+  const formatTokenAmount = (amount: number, denom: string) => {
+    // Convert from base units (micro) to display units (typically 6 decimal places)
+    // For example: uakt -> AKT, uatom -> ATOM, etc.
+    const displayAmount = amount / 1000000; // Most cosmos tokens use 6 decimal places
+    
+    // Get display denomination by removing 'u' prefix
+    const displayDenom = denom.startsWith('u') ? denom.slice(1).toUpperCase() : denom.toUpperCase();
+    
+    // Format the amount based on size
+    let formattedAmount: string;
+    if (displayAmount === 0) {
+      formattedAmount = '0';
+    } else if (displayAmount < 0.000001) {
+      formattedAmount = '<0.000001';
+    } else if (displayAmount < 0.01) {
+      formattedAmount = displayAmount.toFixed(6);
+    } else if (displayAmount < 1) {
+      formattedAmount = displayAmount.toFixed(4);
+    } else if (displayAmount < 1000) {
+      formattedAmount = displayAmount.toFixed(2);
+    } else if (displayAmount < 1000000) {
+      formattedAmount = (displayAmount / 1000).toFixed(2) + 'K';
+    } else {
+      formattedAmount = (displayAmount / 1000000).toFixed(2) + 'M';
+    }
+    
+    return `${formattedAmount} ${displayDenom}`;
   };
 
   // Check if chain is Namada
@@ -398,6 +439,7 @@ const RewardsWalletsManagement: React.FC = () => {
   useEffect(() => {
     fetchWallets();
     fetchAvailableChains();
+    fetchReferralBonusStats();
   }, []);
 
   // Fetch balances when wallets are loaded (but only once)
@@ -522,7 +564,7 @@ const RewardsWalletsManagement: React.FC = () => {
             initial={{ opacity: 0, y: -50, x: '-50%' }}
             animate={{ opacity: 1, y: 20, x: '-50%' }}
             exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className={`fixed top-4 left-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${
+            className={`fixed top-4 left-1/2 z-[9999] px-4 py-2 rounded-lg shadow-lg ${
               isDarkMode
                 ? 'bg-gray-800 border border-gray-600 text-green-300'
                 : 'bg-white border border-gray-200 text-green-600'
@@ -557,7 +599,7 @@ const RewardsWalletsManagement: React.FC = () => {
                 }`}>
                   Chain
                 </th>
-                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-300' : 'text-gray-500'
                 }`}>
                   Address
@@ -575,6 +617,21 @@ const RewardsWalletsManagement: React.FC = () => {
                 <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-300' : 'text-gray-500'
                 }`}>
+                  Total Earned
+                </th>
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                }`}>
+                  Total Claimable
+                </th>
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                }`}>
+                  Claimable Ratio
+                </th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                }`}>
                   Created
                 </th>
                 <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
@@ -589,7 +646,7 @@ const RewardsWalletsManagement: React.FC = () => {
             } divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
               {!wallets || wallets.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={9} className="px-6 py-12 text-center">
                     <div className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       <Wallet className="w-8 h-8 mx-auto mb-2 opacity-50" />
                       No rewards wallets found
@@ -615,7 +672,7 @@ const RewardsWalletsManagement: React.FC = () => {
                           <div className={`text-sm font-medium ${
                             isDarkMode ? 'text-white' : 'text-gray-900'
                           }`}>
-                            {wallet?.prettyName || 'Unknown Chain'}
+                            {wallet?.prettyName || wallet?.chainName || 'Unknown Chain'}
                           </div>
                           <div className={`text-sm ${
                             isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -625,25 +682,25 @@ const RewardsWalletsManagement: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <code className={`text-sm ${
+                    <td className="px-3 py-4 whitespace-nowrap">
+                      <div className="flex items-center max-w-[120px]">
+                        <code className={`text-xs ${
                           isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                        } bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded`}>
+                        } bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded truncate`}>
                           {wallet.publicAddress 
-                            ? `${wallet.publicAddress.slice(0, 12)}...${wallet.publicAddress.slice(-8)}`
+                            ? `${wallet.publicAddress.slice(0, 4)}...${wallet.publicAddress.slice(-4)}`
                             : 'N/A'
                           }
                         </code>
                         <button
                           onClick={() => copyToClipboard(wallet.publicAddress || '')}
                           disabled={!wallet.publicAddress}
-                          className={`ml-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${
+                          className={`ml-1 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${
                             isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
                           } ${!wallet.publicAddress ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title="Copy address"
+                          title="Copy full address"
                         >
-                          <Copy className="w-4 h-4" />
+                          <Copy className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
@@ -689,13 +746,76 @@ const RewardsWalletsManagement: React.FC = () => {
                         </button>
                       </div>
                     </td>
+                    
+                    {/* Total Earned Column */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
-                        {wallet?.createdAt ? formatDate(wallet.createdAt) : 'N/A'}
+                      {chainStats[wallet.chainId] ? (
+                        <div className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {formatTokenAmount(chainStats[wallet.chainId].totalEarned, chainStats[wallet.chainId].denom)}
+                        </div>
+                      ) : (
+                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          N/A
+                        </span>
+                      )}
+                    </td>
+                    
+                    {/* Total Claimable Column */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {chainStats[wallet.chainId] ? (
+                        <div className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {formatTokenAmount(chainStats[wallet.chainId].totalClaimable, chainStats[wallet.chainId].denom)}
+                        </div>
+                      ) : (
+                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          N/A
+                        </span>
+                      )}
+                    </td>
+                    
+                    {/* Claimable Ratio Column */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {chainStats[wallet.chainId] ? (
+                        <div className="flex items-center">
+                          <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {chainStats[wallet.chainId].claimableRatio}%
+                          </span>
+                          {chainStats[wallet.chainId].needsTopUp && (
+                            <div title="Needs top-up">
+                              <AlertTriangle className="w-4 h-4 ml-2 text-yellow-500" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          N/A
+                        </span>
+                      )}
+                    </td>
+                    
+                    <td className="px-3 py-4 whitespace-nowrap text-xs max-w-[100px]">
+                      <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'} truncate`}>
+                        {wallet?.createdAt ? new Date(wallet.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
+                        }) : 'N/A'}
                       </div>
                       {wallet?.createdBy && (
-                        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          by {wallet.createdBy}
+                        <div className="flex items-center">
+                          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} truncate`}
+                               title={`Created by ${wallet.createdBy}`}>
+                            by {wallet.createdBy.length > 8 ? `${wallet.createdBy.slice(0, 6)}..` : wallet.createdBy}
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(wallet.createdBy || '')}
+                            disabled={!wallet.createdBy}
+                            className={`ml-1 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${
+                              isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                            } ${!wallet.createdBy ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="Copy admin address"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
                         </div>
                       )}
                     </td>

@@ -187,9 +187,40 @@ class AdminApiClient {
   async patch<T = any>(endpoint: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PATCH', body, headers });
   }
+
+  // Referral bonus stats endpoint
+  async getReferralBonusStats(): Promise<ApiResponse<ReferralBonusStats>> {
+    return this.get<ReferralBonusStats>('/admin/referral-bonus-stats');
+  }
+}
+
+// Types for referral bonus stats
+interface ReferralBonusStats {
+  totalStats: {
+    totalEarnedUSD: number;
+    totalClaimableUSD: number;
+    chainsCount: number;
+  };
+  chainStats: ChainStats[];
+  priceDataAvailable: boolean;
+  investorsWithBonusesCount: number;
+  lastUpdated: string;
+}
+
+interface ChainStats {
+  chainId: string;
+  totalEarned: number;
+  totalClaimable: number;
+  investorsCount: number;
+  denom: string;
+  needsTopUp: boolean;
+  claimableRatio: number;
 }
 
 // Create singleton instance
 export const adminApiClient = new AdminApiClient();
 
 export default adminApiClient;
+
+// Export types for use in components
+export type { ReferralBonusStats, ChainStats };

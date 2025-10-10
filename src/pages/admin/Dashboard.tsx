@@ -229,7 +229,7 @@ const AdminDashboard: React.FC = () => {
                 </p>
                 <div className="mt-3">
                   <button
-                    onClick={() => window.open('https://namada.net', '_blank')}
+                    onClick={() => window.open('https://namada.net/keychain', '_blank')}
                     className={`text-sm underline font-medium hover:no-underline ${
                       isDarkMode ? 'text-yellow-200' : 'text-yellow-700'
                     }`}

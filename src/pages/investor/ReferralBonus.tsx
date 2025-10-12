@@ -505,6 +505,11 @@ const ReferralBonus: React.FC = () => {
                     <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                       Claimable
                     </p>
+                    {bonus.reward > 0 && bonus.reward < 1 && (
+                      <p className={`text-xs ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                        Min: 1 {bonus.symbol}
+                      </p>
+                    )}
                     {bonus.rewardUSD !== undefined && (
                       <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                         ${bonus.rewardUSD.toFixed(2)}
@@ -513,20 +518,26 @@ const ReferralBonus: React.FC = () => {
                   </div>
                   <button
                     onClick={() => openClaimModal(bonus)}
-                    disabled={bonus.reward <= 0 || claiming === bonus.chainId}
+                    disabled={bonus.reward <= 0 || bonus.reward < 1 || claiming === bonus.chainId}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      bonus.reward > 0 && claiming !== bonus.chainId
+                      bonus.reward >= 1 && claiming !== bonus.chainId
                         ? isDarkMode
                           ? 'bg-green-600 hover:bg-green-700 text-white'
                           : 'bg-green-500 hover:bg-green-600 text-white'
                         : 'bg-gray-400 text-gray-600 cursor-not-allowed'
                     }`}
+                    title={bonus.reward > 0 && bonus.reward < 1 ? `Minimum claimable amount is 1 ${bonus.symbol}` : ''}
                   >
                     {claiming === bonus.chainId ? (
                       <div className="flex items-center space-x-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                         <span>Claiming...</span>
                       </div>
+                    ) : bonus.reward > 0 && bonus.reward < 1 ? (
+                      <>
+                        <AlertTriangle className="h-4 w-4 inline mr-1" />
+                        Min 1 {bonus.symbol}
+                      </>
                     ) : (
                       <>
                         <Download className="h-4 w-4 inline mr-1" />
@@ -568,30 +579,64 @@ const ReferralBonus: React.FC = () => {
             </div>
 
             <div className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <p className="mb-3">
-                You are about to claim your referral rewards for <strong>{selectedBonus.chainName}</strong>:
-              </p>
-              
-              <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm">Amount:</span>
-                  <span className="font-semibold">
-                    {selectedBonus.reward.toFixed(6)} {selectedBonus.symbol}
-                  </span>
-                </div>
-                {selectedBonus.rewardUSD !== undefined && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">USD Value:</span>
-                    <span className="font-semibold">
-                      ${selectedBonus.rewardUSD.toFixed(2)}
-                    </span>
+              {selectedBonus.reward >= 1 ? (
+                <>
+                  <p className="mb-3">
+                    You are about to claim your referral rewards for <strong>{selectedBonus.chainName}</strong>:
+                  </p>
+                  
+                  <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm">Amount:</span>
+                      <span className="font-semibold">
+                        {selectedBonus.reward.toFixed(6)} {selectedBonus.symbol}
+                      </span>
+                    </div>
+                    {selectedBonus.rewardUSD !== undefined && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm">USD Value:</span>
+                        <span className="font-semibold">
+                          ${selectedBonus.rewardUSD.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <p className={`mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                This action will claim your rewards to your connected wallet. Please confirm to proceed.
-              </p>
+                  <p className={`mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    This action will claim your rewards to your connected wallet. Please confirm to proceed.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className={`p-4 rounded-lg border ${
+                    isDarkMode 
+                      ? 'bg-yellow-900/20 border-yellow-700' 
+                      : 'bg-yellow-50 border-yellow-200'
+                  }`}>
+                    <div className="flex items-center space-x-2 mb-2">
+                      <AlertTriangle className={`h-5 w-5 ${
+                        isDarkMode ? 'text-yellow-400' : 'text-yellow-500'
+                      }`} />
+                      <h4 className={`font-semibold ${
+                        isDarkMode ? 'text-yellow-300' : 'text-yellow-700'
+                      }`}>
+                        Amount Too Small to Claim
+                      </h4>
+                    </div>
+                    <p className={`text-sm ${
+                      isDarkMode ? 'text-yellow-200' : 'text-yellow-600'
+                    }`}>
+                      You have <strong>{selectedBonus.reward.toFixed(6)} {selectedBonus.symbol}</strong> available, 
+                      but the minimum claimable amount is <strong>1 {selectedBonus.symbol}</strong>.
+                    </p>
+                    <p className={`text-sm mt-2 ${
+                      isDarkMode ? 'text-yellow-200' : 'text-yellow-600'
+                    }`}>
+                      Please wait until you have earned at least 1 {selectedBonus.symbol} before claiming.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {claimError && (
@@ -621,9 +666,9 @@ const ReferralBonus: React.FC = () => {
               </button>
               <button
                 onClick={() => handleClaimBonus(selectedBonus.chainId)}
-                disabled={claiming === selectedBonus.chainId}
+                disabled={claiming === selectedBonus.chainId || selectedBonus.reward < 1}
                 className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  claiming === selectedBonus.chainId
+                  claiming === selectedBonus.chainId || selectedBonus.reward < 1
                     ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                     : isDarkMode
                       ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -635,6 +680,8 @@ const ReferralBonus: React.FC = () => {
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                     <span>Claiming...</span>
                   </div>
+                ) : selectedBonus.reward < 1 ? (
+                  'Amount Too Small'
                 ) : (
                   'Confirm Claim'
                 )}

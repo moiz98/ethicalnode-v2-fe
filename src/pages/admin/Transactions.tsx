@@ -253,11 +253,11 @@ const Transactions: React.FC = () => {
   };
 
   // Format amount with proper decimal places
-  const formatAmount = (amount: number, tokenSymbol: string) => {
-    // Convert from base units to display units (assuming 6 decimal places for most tokens)
-    const displayAmount = amount / 1000000;
-    return `${displayAmount.toFixed(6)} ${tokenSymbol}`;
-  };
+  // const formatAmount = (amount: number, tokenSymbol: string) => {
+  //   // Convert from base units to display units (assuming 6 decimal places for most tokens)
+  //   const displayAmount = amount / 1000000;
+  //   return `${displayAmount.toFixed(6)} ${tokenSymbol}`;
+  // };
 
   // Get chain display name
   const getChainDisplayName = (chainName?: string, chainId?: string) => {

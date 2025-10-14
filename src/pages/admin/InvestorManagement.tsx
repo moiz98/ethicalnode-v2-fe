@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Copy, CheckCircle, Users, UserCheck, UserX, Search, Filter, RefreshCw, Eye, X, DollarSign, Wallet, Calendar, TrendingUp } from 'lucide-react';
 import adminApiClient, { ReferralBonusStats } from '../../utils/adminApiClient';
+import { assetLists, chains } from 'chain-registry';
 
 interface Investor {
   _id: string;
@@ -45,8 +46,9 @@ interface Transaction {
   fee: string;
   status: 'success' | 'failed' | 'pending';
   timestamp: string;
-  userAddress?: string;
-  chainId?: string;
+  userPublicAddress: string;
+  chainId: string;
+  rawTx: any;
 }
 
 interface PriceData {
@@ -223,7 +225,7 @@ const InvestorManagement: React.FC = () => {
     }
 
     return investor.referralBonuses.reduce((totalUSD, bonus) => {
-      const chainInfo = getChainInfo(bonus.denom || '');
+      const chainInfo = getChainInfo(bonus.chainId || '');
       const priceUSD = chainInfo.coinGeckoId && priceData[chainInfo.coinGeckoId] 
         ? priceData[chainInfo.coinGeckoId].usd 
         : 0;
@@ -243,7 +245,7 @@ const InvestorManagement: React.FC = () => {
     }
 
     return investor.referralBonuses.reduce((totalUSD, bonus) => {
-      const chainInfo = getChainInfo(bonus.denom || '');
+      const chainInfo = getChainInfo(bonus.chainId || '');
       const priceUSD = chainInfo.coinGeckoId && priceData[chainInfo.coinGeckoId] 
         ? priceData[chainInfo.coinGeckoId].usd 
         : 0;
@@ -304,27 +306,60 @@ const InvestorManagement: React.FC = () => {
     return {};
   };
 
-  // Get chain info from denom
-  const getChainInfo = (denom: string) => {
-    const denomMap: { [key: string]: { chainName: string; symbol: string; coinGeckoId?: string; exponent: number } } = {
-      'uakt': { chainName: 'Akash', symbol: 'AKT', coinGeckoId: 'akash-network', exponent: 6 },
-      ' uakt': { chainName: 'Akash', symbol: 'AKT', coinGeckoId: 'akash-network', exponent: 6 },
-      'uatom': { chainName: 'Cosmos Hub', symbol: 'ATOM', coinGeckoId: 'cosmos', exponent: 6 },
-      'uosmo': { chainName: 'Osmosis', symbol: 'OSMO', coinGeckoId: 'osmosis', exponent: 6 },
-      'afet': { chainName: 'Fetch.ai', symbol: 'FET', coinGeckoId: 'fetch-ai', exponent: 18 },
-      'nam': { chainName: 'Namada', symbol: 'NAM', coinGeckoId: 'namada', exponent: 6 },
-      'uxprt': { chainName: 'Persistence', symbol: 'XPRT', coinGeckoId: 'persistence', exponent: 6 },
-      'udvpn': { chainName: 'Sentinel', symbol: 'DVPN', coinGeckoId: 'sentinel', exponent: 6 },
-    };
+  // Get chain info from chainId
+  const getChainInfo = (chainId: string) => {
+    const fullChainData = chains.find(c => c.chainId === chainId);
+    const assetList = assetLists.find(a => a.chainName === fullChainData?.chainName);
+    const assetData = assetList ? assetList.assets.find(a =>  a.typeAsset === 'sdk.coin') : null;
+
+    const exponent = assetData ? assetData.denomUnits.find(d => d.denom === assetData.display)?.exponent : null;
     
-    const cleanDenom = denom.trim();
-    
-    return denomMap[cleanDenom] || denomMap[denom] || { 
-      chainName: cleanDenom || 'Unknown', 
-      symbol: (cleanDenom || 'UNKNOWN').toUpperCase(),
-      coinGeckoId: undefined,
-      exponent: 6
+    return { 
+      chainName: fullChainData?.chainName, 
+      symbol: assetData?.display.toUpperCase(),
+      coinGeckoId: assetData?.coingeckoId,
+      exponent: exponent || 0
     };
+  };
+
+  // Format token amount from base units to display units
+  const formatTokenAmount = (chainId: string, amount: number, denom: string) => {
+    const fullChainData = chains.find(c => c.chainId === chainId);
+    const assetList = assetLists.find(a => a.chainName === fullChainData?.chainName);
+    const assetData = assetList ? assetList.assets.find(a =>  a.typeAsset === 'sdk.coin') : null;
+    const exponent = assetData ? assetData.denomUnits.find(d => d.denom === assetData.display)?.exponent : undefined;
+
+    if (exponent !== undefined) {
+
+      // Convert from base units to display units using the correct exponent
+      // For example: uakt -> AKT, uatom -> ATOM, etc.
+      const displayAmount = amount / Math.pow(10, exponent); // Most cosmos tokens use 6 decimal places
+    
+      // Get display denomination by removing 'u' prefix
+      const displayDenom = assetData ? assetData.display : denom.replace(/^u/, '').toUpperCase();
+    
+      // Format the amount based on size
+      let formattedAmount: string;
+      if (displayAmount === 0) {
+        formattedAmount = '0';
+      } else if (displayAmount < 0.000001) {
+        formattedAmount = '<0.000001';
+      } else if (displayAmount < 0.01) {
+        formattedAmount = displayAmount.toFixed(6);
+      } else if (displayAmount < 1) {
+        formattedAmount = displayAmount.toFixed(4);
+      } else if (displayAmount < 1000) {
+        formattedAmount = displayAmount.toFixed(2);
+      } else if (displayAmount < 1000000) {
+        formattedAmount = (displayAmount / 1000).toFixed(2) + 'K';
+      } else {
+        formattedAmount = (displayAmount / 1000000).toFixed(2) + 'M';
+      }
+    
+      return `${formattedAmount} ${displayDenom}`;
+    } else {
+      return `${amount} ${denom}`; // Fallback if exponent not found
+    }
   };
 
   // Fetch detailed investor data for modal
@@ -358,7 +393,7 @@ const InvestorManagement: React.FC = () => {
         // Transform referral bonuses with pricing data
         const referralBonuses: ReferralBonusData[] = investorData.referralBonuses?.map((bonus: any) => {
           console.log('Processing bonus:', bonus);
-          const chainInfo = getChainInfo(bonus.denom);
+          const chainInfo = getChainInfo(bonus.chainId);
           console.log('Chain info for', bonus.denom, ':', chainInfo);
           
           const priceUSD = chainInfo.coinGeckoId && pricesData[chainInfo.coinGeckoId] 
@@ -424,7 +459,7 @@ const InvestorManagement: React.FC = () => {
               type: tx.type,
               amount: tx.amount?.toString() || '0',
               denom: tx.tokenDenom || tx.denom || '',
-              fee: tx.fee?.toString() || '0',
+              fee: tx.rawTx?.gasUsed || '0',
               status: tx.status,
               timestamp: tx.createdAt || tx.timestamp,
               userAddress: tx.userPublicAddress || tx.userAddress,
@@ -1444,11 +1479,6 @@ const InvestorManagement: React.FC = () => {
                                 </div>
                                 
                                 <div className="flex items-center space-x-4">
-                                  {tx.height && (
-                                    <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                      Block: {tx.height}
-                                    </span>
-                                  )}
                                   <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                                     {tx.timestamp ? formatDate(tx.timestamp) : 'N/A'}
                                   </span>
@@ -1457,14 +1487,15 @@ const InvestorManagement: React.FC = () => {
                               
                               <div className="text-right ml-4">
                                 <div className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                  {tx.amount && tx.denom ? 
+                                  {formatTokenAmount(tx.chainId, Number(tx.amount), tx.denom)}
+                                  {/* {tx.amount && tx.denom ? 
                                     `${parseFloat(tx.amount).toFixed(6)} ${tx.denom.replace('u', '').toUpperCase()}` :
                                     'N/A'
-                                  }
+                                  } */}
                                 </div>
                                 {tx.fee && (
                                   <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    Fee: {parseFloat(tx.fee).toFixed(6)}
+                                    Fee: {formatTokenAmount(tx.chainId, Number(tx.fee), tx.denom)}
                                   </div>
                                 )}
                               </div>

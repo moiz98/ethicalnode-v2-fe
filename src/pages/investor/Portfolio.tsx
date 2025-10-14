@@ -486,11 +486,228 @@ const InvestorPortfolio: React.FC = () => {
     setShowCancelUnstakingModal(true);
   };
 
-  const handleWithdrawUnstaking = (asset: UnstakingAsset) => {
+  const handleWithdrawUnstaking = useCallback(async (asset: UnstakingAsset) => {
     console.log('Withdraw unstaking action for:', asset.chainName, asset.amount, asset.asset);
-    // TODO: Implement withdraw unstaking functionality for Namada
-    alert(`Withdraw ${asset.amount} ${asset.asset} from ${asset.chainName} - Coming Soon!`);
-  };
+    
+    // Check if it's a Namada chain
+    if (asset.chainName.toLowerCase().includes('namada') || asset.chainId.includes('namada')) {
+      // Handle Namada withdraw unbonded
+      if (window.namada) {
+        try {
+          setIsTransactionInProgress(true);
+          
+          // Initialize Namada wallet manager if not already done
+          if (!namadaWallet.current) {
+            namadaWallet.current = new NamadaWalletManager();
+          }
+
+          // Get working RPC endpoints from backend API for Namada
+          let workingRpc = null;
+          try {
+            console.log('Fetching Namada RPC endpoints from backend for chain:', asset.chainId);
+            const apiResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/apis/${asset.chainId}`);
+            
+            if (apiResponse.ok) {
+              const apiData = await apiResponse.json();
+              console.log('Backend API response for Namada RPCs:', apiData);
+              
+              if (apiData.success && apiData.data && apiData.data.rpc && apiData.data.rpc.length > 0) {
+                // Test RPC endpoints to find working one
+                for (const rpcEndpoint of apiData.data.rpc) {
+                  try {
+                    console.log(`Testing Namada RPC endpoint: ${rpcEndpoint.address}`);
+                    const testResponse = await fetch(`${rpcEndpoint.address}/status`, {
+                      method: 'GET',
+                      headers: { 'Content-Type': 'application/json' },
+                      signal: AbortSignal.timeout(5000) // 5 second timeout
+                    });
+                    
+                    if (testResponse.ok) {
+                      workingRpc = rpcEndpoint.address;
+                      console.log(`Found working Namada RPC: ${workingRpc}`);
+                      break;
+                    }
+                  } catch (rpcTest) {
+                    console.warn(`Namada RPC ${rpcEndpoint.address} not responding`);
+                    continue;
+                  }
+                }
+              }
+            }
+          } catch (apiError) {
+            console.warn('Failed to fetch Namada RPC from backend, using fallback:', apiError);
+          }
+
+          // If no working RPC found from backend, use fallback
+          if (!workingRpc) {
+            const fallbackRpc = 'https://namada-mainnet-rpc.mellifera.network:443';
+            try {
+              console.log(`Testing Namada fallback RPC: ${fallbackRpc}`);
+              const testResponse = await fetch(`${fallbackRpc}/status`, {
+                signal: AbortSignal.timeout(5000) // 5 second timeout
+              });
+              if (testResponse.ok) {
+                workingRpc = fallbackRpc;
+                console.log(`Using Namada fallback RPC: ${workingRpc}`);
+              } else {
+                console.warn('Namada fallback RPC not responding, proceeding anyway');
+                workingRpc = fallbackRpc; // Use fallback even if test fails
+              }
+            } catch (err) {
+              console.warn(`Namada fallback RPC test failed, using anyway:`, err);
+              workingRpc = fallbackRpc; // Use fallback even if test fails
+            }
+          }
+
+          console.log('Using Namada RPC endpoint:', workingRpc);
+          
+          // Connect to Namada wallet
+          const connected = await namadaWallet.current.connect(asset.chainId, workingRpc);
+          if (!connected) {
+            throw new Error('Failed to connect to Namada wallet');
+          }
+
+          const userAddress = namadaWallet.current.getAddress();
+          console.log('Connected Namada address:', userAddress);
+
+          console.log('Initiating Namada withdraw unbonded transaction...');
+          console.log('Validator:', asset.validatorAddress);
+          console.log('Amount:', asset.amount, 'NAM');
+
+          // Check if asset can be withdrawn
+          if (!asset.canWithdraw) {
+            throw new Error(`This unstaking position is not yet ready for withdrawal. Please wait ${asset.daysRemaining || 'several'} more days for the unbonding period to complete.`);
+          }
+
+          // Validate validator address
+          if (!asset.validatorAddress) {
+            throw new Error('Validator address is required for withdrawal but was not found in the unstaking data');
+          }
+
+          // Show wallet prompt notification
+          showToast({
+            type: 'info',
+            title: 'Wallet Action Required',
+            message: 'Please confirm the withdraw transaction in your Namada wallet...',
+            duration: 8000
+          });
+
+          // Withdraw unbonded assets using the Namada wallet manager
+          const result = await namadaWallet.current.withdrawUnbonded(
+            asset.validatorAddress,
+            workingRpc,
+            `Withdrawing ${asset.amount} NAM unbonded assets via EthicalNode`
+          );
+
+          console.log('Namada withdraw transaction result:', result);
+
+          // Convert amount from NAM to namnam for transaction record
+          const withdrawnAmountInNamnam = (parseFloat(asset.amount) * 1000000).toString();
+
+          // Create transaction record in backend
+          await createTransactionRecord({
+            txHash: result.hash || '',
+            userPublicAddress: userAddress,
+            chainId: asset.chainId,
+            chainName: asset.chainName,
+            type: 'claim_undelegate', // Use existing type for now
+            amount: withdrawnAmountInNamnam,
+            tokenSymbol: 'NAM',
+            tokenDenom: 'nam',
+            validatorAddress: asset.validatorAddress,
+            status: 'success',
+            rawTx: result
+          });
+
+          console.log('Namada withdraw unbonded transaction completed successfully!');
+          setTransactionResultModal({
+            isOpen: true,
+            success: true,
+            txHash: result.hash,
+            chainName: asset.chainName,
+            amount: asset.amount,
+            tokenSymbol: 'NAM',
+            validatorName: `${asset.chainName} Validator`,
+            transactionType: 'claim' // Use claim type for withdraw display
+          });
+
+          // Show success toast
+          showToast({
+            type: 'success',
+            title: 'Withdrawal Successful!',
+            message: `Successfully withdrew ${asset.amount} NAM from completed unstaking position`
+          });
+
+          // Refresh portfolio data
+          setTimeout(() => {
+            fetchPortfolioData();
+          }, 2000);
+
+        } catch (error: any) {
+          console.error('Namada withdraw transaction failed:', error);
+          
+          // Check for specific error messages and provide user-friendly explanations
+          let userFriendlyMessage = error.message || 'Namada withdraw transaction failed. Please try again or check your wallet connection.';
+          
+          if (error.message && error.message.includes('not ready')) {
+            userFriendlyMessage = `This unstaking position is not yet ready for withdrawal. 
+
+The unbonding period for Namada is typically 21 epochs (approximately 21 days). Please wait until the completion date (${asset.completionDate ? new Date(asset.completionDate).toLocaleDateString() : 'unknown'}) before attempting to withdraw.
+
+Current status: ${asset.daysRemaining || 'Unknown'} days remaining`;
+          } else if (error.message && error.message.includes('no unbonded bonds ready to withdraw')) {
+            userFriendlyMessage = `No unbonded assets are ready to withdraw for this validator.
+
+This could mean:
+• The unbonding period hasn't completed yet
+• The assets have already been withdrawn
+• There was an issue with the original unbonding transaction
+
+Please check your transaction history or wait for the unbonding period to complete.`;
+          }
+          
+          setTransactionResultModal({
+            isOpen: true,
+            success: false,
+            chainName: asset.chainName,
+            amount: asset.amount,
+            tokenSymbol: 'NAM',
+            validatorName: `${asset.chainName} Validator`,
+            errorMessage: userFriendlyMessage,
+            transactionType: 'claim'
+          });
+
+          // Show error toast
+          showToast({
+            type: 'error',
+            title: 'Withdrawal Failed',
+            message: error.message || 'Transaction failed. Please try again.'
+          });
+        } finally {
+          setIsTransactionInProgress(false);
+        }
+      } else {
+        setTransactionResultModal({
+          isOpen: true,
+          success: false,
+          chainName: asset.chainName,
+          amount: asset.amount,
+          tokenSymbol: 'NAM',
+          validatorName: `${asset.chainName} Validator`,
+          errorMessage: 'Please install Namada wallet extension to withdraw from Namada network.',
+          transactionType: 'claim'
+        });
+      }
+    } else {
+      // For Cosmos chains, this functionality is typically automatic
+      // Most Cosmos chains automatically transfer unbonded tokens back to the delegator
+      showToast({
+        type: 'info',
+        title: 'Not Required',
+        message: 'Cosmos chains automatically transfer unbonded tokens. No manual withdrawal needed.'
+      });
+    }
+  }, [showToast]);
 
   const fetchPortfolioData = useCallback(async () => {
     // Prevent duplicate requests
@@ -808,7 +1025,7 @@ const InvestorPortfolio: React.FC = () => {
     userPublicAddress: string;
     chainId: string;
     chainName: string;
-    type: 'undelegate' | 'claim_rewards' | 'cancel_undelegate';
+    type: 'undelegate' | 'claim_rewards' | 'cancel_undelegate' | 'claim_undelegate';
     amount: string;
     tokenSymbol: string;
     tokenDenom: string;
@@ -2675,9 +2892,14 @@ Namada uses an epoch-based reward system. The rewards shown (${selectedAsset.pen
                                 asset.canWithdraw ? (
                                   <button
                                     onClick={() => handleWithdrawUnstaking(asset)}
-                                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-colors"
+                                    disabled={isTransactionInProgress}
+                                    className={`px-3 py-1 text-white text-xs font-medium rounded transition-colors ${
+                                      isTransactionInProgress 
+                                        ? 'bg-gray-500 cursor-not-allowed' 
+                                        : 'bg-green-600 hover:bg-green-700'
+                                    }`}
                                   >
-                                    Withdraw
+                                    {isTransactionInProgress ? 'Processing...' : 'Withdraw'}
                                   </button>
                                 ) : (
                                   <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>

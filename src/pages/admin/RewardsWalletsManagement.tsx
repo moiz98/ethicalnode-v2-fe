@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../contexts/ThemeContext';
 import adminApiClient, { ChainStats } from '../../utils/adminApiClient';
 import { Wallet, Plus, RefreshCw, Eye, Trash2, Copy, X, Loader2, AlertTriangle } from 'lucide-react';
+import { chains, assetLists } from 'chain-registry';
 
 // TypeScript interfaces
 interface RewardsWallet {
@@ -313,33 +314,43 @@ const RewardsWalletsManagement: React.FC = () => {
   };
 
   // Format token amount from base units to display units
-  const formatTokenAmount = (amount: number, denom: string) => {
-    // Convert from base units (micro) to display units (typically 6 decimal places)
-    // For example: uakt -> AKT, uatom -> ATOM, etc.
-    const displayAmount = amount / 1000000; // Most cosmos tokens use 6 decimal places
+  const formatTokenAmount = (chainId: string, amount: number, denom: string) => {
+    const fullChainData = chains.find(c => c.chainId === chainId);
+    const assetList = assetLists.find(a => a.chainName === fullChainData?.chainName);
+    const assetData = assetList ? assetList.assets.find(a =>  a.typeAsset === 'sdk.coin') : null;
+    const exponent = assetData ? assetData.denomUnits.find(d => d.denom === assetData.display)?.exponent : undefined;
+
+    if (exponent !== undefined) {
+
+      // Convert from base units to display units using the correct exponent
+      // For example: uakt -> AKT, uatom -> ATOM, etc.
+      const displayAmount = amount / Math.pow(10, exponent); // Most cosmos tokens use 6 decimal places
     
-    // Get display denomination by removing 'u' prefix
-    const displayDenom = denom.startsWith('u') ? denom.slice(1).toUpperCase() : denom.toUpperCase();
+      // Get display denomination by removing 'u' prefix
+      const displayDenom = assetData ? assetData.display : denom.replace(/^u/, '').toUpperCase();
     
-    // Format the amount based on size
-    let formattedAmount: string;
-    if (displayAmount === 0) {
-      formattedAmount = '0';
-    } else if (displayAmount < 0.000001) {
-      formattedAmount = '<0.000001';
-    } else if (displayAmount < 0.01) {
-      formattedAmount = displayAmount.toFixed(6);
-    } else if (displayAmount < 1) {
-      formattedAmount = displayAmount.toFixed(4);
-    } else if (displayAmount < 1000) {
-      formattedAmount = displayAmount.toFixed(2);
-    } else if (displayAmount < 1000000) {
-      formattedAmount = (displayAmount / 1000).toFixed(2) + 'K';
+      // Format the amount based on size
+      let formattedAmount: string;
+      if (displayAmount === 0) {
+        formattedAmount = '0';
+      } else if (displayAmount < 0.000001) {
+        formattedAmount = '<0.000001';
+      } else if (displayAmount < 0.01) {
+        formattedAmount = displayAmount.toFixed(6);
+      } else if (displayAmount < 1) {
+        formattedAmount = displayAmount.toFixed(4);
+      } else if (displayAmount < 1000) {
+        formattedAmount = displayAmount.toFixed(2);
+      } else if (displayAmount < 1000000) {
+        formattedAmount = (displayAmount / 1000).toFixed(2) + 'K';
+      } else {
+        formattedAmount = (displayAmount / 1000000).toFixed(2) + 'M';
+      }
+    
+      return `${formattedAmount} ${displayDenom}`;
     } else {
-      formattedAmount = (displayAmount / 1000000).toFixed(2) + 'M';
+      return `${amount} ${denom}`; // Fallback if exponent not found
     }
-    
-    return `${formattedAmount} ${displayDenom}`;
   };
 
   // Check if chain is Namada
@@ -751,7 +762,7 @@ const RewardsWalletsManagement: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {chainStats[wallet.chainId] ? (
                         <div className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {formatTokenAmount(chainStats[wallet.chainId].totalEarned, chainStats[wallet.chainId].denom)}
+                          {formatTokenAmount(wallet.chainId, chainStats[wallet.chainId].totalEarned, chainStats[wallet.chainId].denom)}
                         </div>
                       ) : (
                         <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -764,7 +775,7 @@ const RewardsWalletsManagement: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {chainStats[wallet.chainId] ? (
                         <div className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {formatTokenAmount(chainStats[wallet.chainId].totalClaimable, chainStats[wallet.chainId].denom)}
+                          {formatTokenAmount(wallet.chainId, chainStats[wallet.chainId].totalClaimable, chainStats[wallet.chainId].denom)}
                         </div>
                       ) : (
                         <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>

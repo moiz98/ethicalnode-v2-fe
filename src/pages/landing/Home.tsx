@@ -11,7 +11,7 @@ import Newsletter from '../../components/Newsletter'
 
 const Home = () => {
   const { referrer: urlReferrer } = useParams<{ referrer?: string }>();
-  const { setReferrer, referrer } = useReferral();
+  const { setReferrer } = useReferral();
 
   // Handle referrer from URL params
   useEffect(() => {

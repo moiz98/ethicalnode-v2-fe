@@ -61,7 +61,7 @@ const Home = () => {
     )} */}
     
     {/* Welcome Modal - only show if old version URL is configured */}
-    {import.meta.env.VITE_OLD_VERSION_URL && (
+    {import.meta.env.VITE_OLD_VERSION_URL != '' && (
       <>
         <WelcomeModal 
           isOpen={showWelcomeModal} 

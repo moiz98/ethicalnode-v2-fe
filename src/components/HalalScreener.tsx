@@ -40,6 +40,10 @@ const HalalScreener = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [hasInitialized, setHasInitialized] = useState(false); // Add initialization flag
   const isInitializingRef = useRef(false); // Track if initialization is in progress
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [popupInfo, setPopupInfo] = useState<{
     isOpen: boolean;
     type: 'trading' | 'staking' | null;
@@ -247,6 +251,18 @@ const HalalScreener = () => {
     screener.blockchainToken.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalItems = filteredScreeners.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedScreeners = filteredScreeners.slice(startIndex, endIndex);
+
+  // Reset to first page when search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   // Compliance descriptions
   const getComplianceDescription = (type: 'trading' | 'staking', status: string, blockchain: string) => {
     const descriptions = {
@@ -352,28 +368,46 @@ const HalalScreener = () => {
           transition={{ duration: 0.8, delay: 0.4 }}
           viewport={{ once: true }}
         >
-          {/* Search Bar inside table */}
+          {/* Search Bar and Controls */}
           <div className={`px-6 py-4 border-b ${
             isDarkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"
           }`}>
-            <div className="flex items-center justify-between">
-              <div className="relative max-w-md">
-                <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                  isDarkMode ? "text-gray-400" : "text-gray-500"
-                }`} />
-                <input
-                  type="text"
-                  placeholder="Search blockchain or token..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="relative">
+                  <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-500"
+                  }`} />
+                  <input
+                    type="text"
+                    placeholder="Search blockchain or token..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={`w-full sm:w-80 pl-10 pr-4 py-3 rounded-lg border ${
+                      isDarkMode 
+                        ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" 
+                        : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
+                    } focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-colors`}
+                  />
+                </div>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-3 rounded-lg border ${
                     isDarkMode 
-                      ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" 
-                      : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
+                      ? "bg-gray-700 border-gray-600 text-white" 
+                      : "bg-white border-gray-300 text-gray-900"
                   } focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-colors`}
-                />
+                >
+                  <option value={10}>Show 10</option>
+                  <option value={15}>Show 15</option>
+                  <option value={20}>Show 20</option>
+                </select>
               </div>
-              <div className={`text-sm font-medium mr-30 ${
+              <div className={`text-sm font-medium ${
                 isDarkMode ? "text-gray-300" : "text-gray-700"
               }`}>
                 Shariah Compliance
@@ -445,7 +479,7 @@ const HalalScreener = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredScreeners.map((screener, index) => {
+                  paginatedScreeners.map((screener, index) => {
                     const priceInfo = getPriceInfo(screener.coinGeckoId);
                     
                     return (
@@ -584,22 +618,80 @@ const HalalScreener = () => {
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
               <div>
-                Showing {filteredScreeners.length} of {screeners.length} screeners
+                Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} screeners
+                {searchTerm && ` (filtered from ${screeners.length})`}
               </div>
               {searchTerm && (
                 <div className={`text-xs mt-1 ${
                   isDarkMode ? "text-gray-500" : "text-gray-500"
                 }`}>
-                  Filtered by: "{searchTerm}"
+                  Search: "{searchTerm}"
                 </div>
               )}
             </div>
             
-            {screeners.length > 0 && (
-              <div className={`text-sm ${
-                isDarkMode ? "text-gray-400" : "text-gray-600"
-              }`}>
-                {screeners.filter(s => s.isActive).length} active • {screeners.filter(s => !s.isActive).length} inactive
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    currentPage === 1
+                      ? `${isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`
+                      : `${isDarkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'}`
+                  }`}
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                    // Show first page, last page, current page and its neighbors
+                    if (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-teal-600 text-white'
+                              : `${isDarkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'}`
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    } else if (
+                      page === currentPage - 2 || 
+                      page === currentPage + 2
+                    ) {
+                      return (
+                        <span key={page} className={`px-2 py-2 text-sm ${
+                          isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        }`}>
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    currentPage === totalPages
+                      ? `${isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`
+                      : `${isDarkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'}`
+                  }`}
+                >
+                  Next
+                </button>
               </div>
             )}
           </div>

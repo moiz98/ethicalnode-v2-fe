@@ -24,20 +24,13 @@ interface HalalScreener {
   updatedAt: string;
 }
 
-interface Pagination {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
-}
+
 
 const HalalScreenerManagement: React.FC = () => {
   const { isDarkMode } = useTheme();
   const [screeners, setScreeners] = useState<HalalScreener[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -65,6 +58,12 @@ const HalalScreenerManagement: React.FC = () => {
     }
   });
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [complianceFilter, setComplianceFilter] = useState<'all' | 'comfortable' | 'questionable' | 'non-comfortable'>('all');
+  const [itemsPerPage] = useState(20); // Fixed at 20 for admin consistency
 
   // Copy to clipboard function
   const copyToClipboard = async (text: string) => {
@@ -79,16 +78,49 @@ const HalalScreenerManagement: React.FC = () => {
     }
   };
 
+  // Filter screeners based on search and filter criteria
+  const allFilteredScreeners = screeners.filter(screener => {
+    // Search filter
+    const searchMatch = searchTerm === '' || 
+      screener.blockchainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      screener.blockchainToken.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      screener.coinGeckoId.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Status filter
+    const statusMatch = statusFilter === 'all' || 
+      (statusFilter === 'active' && screener.isActive) ||
+      (statusFilter === 'inactive' && !screener.isActive);
+    
+    // Compliance filter
+    const complianceMatch = complianceFilter === 'all' ||
+      screener.trading.status.toLowerCase().replace('-', '-') === complianceFilter.toLowerCase().replace('-', '-') ||
+      screener.staking.status.toLowerCase().replace('-', '-') === complianceFilter.toLowerCase().replace('-', '-');
+    
+    return searchMatch && statusMatch && complianceMatch;
+  });
+
+  // Client-side pagination for filtered results
+  const totalFiltered = allFilteredScreeners.length;
+  const totalPages = Math.ceil(totalFiltered / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const filteredScreeners = allFilteredScreeners.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, complianceFilter]);
+
   // Fetch halal screeners from API
-  const fetchScreeners = async (page: number = 1) => {
+  const fetchScreeners = async () => {
     try {
       setLoading(true);
       
-      const result = await adminApiClient.get(`/halal-screener/admin/all?page=${page}&limit=20`);
+      // Fetch all screeners without pagination since we'll handle it client-side
+      const result = await adminApiClient.get(`/halal-screener/admin/all?page=1&limit=1000`);
 
       if (result.success && result.data?.screeners) {
         setScreeners(result.data.screeners);
-        setPagination(result.data.pagination);
       } else {
         console.error('Failed to fetch halal screeners');
         setCopyToast('❌ Failed to fetch halal screeners');
@@ -115,7 +147,7 @@ const HalalScreenerManagement: React.FC = () => {
         console.log('Halal screener created successfully');
         setCopyToast('✅ Halal screener created successfully!');
         setTimeout(() => setCopyToast(null), 3000);
-        fetchScreeners(currentPage);
+        fetchScreeners();
         setShowAddModal(false);
         resetForm();
       } else {
@@ -141,7 +173,7 @@ const HalalScreenerManagement: React.FC = () => {
         console.log('Halal screener updated successfully');
         setCopyToast('✅ Halal screener updated successfully!');
         setTimeout(() => setCopyToast(null), 3000);
-        fetchScreeners(currentPage);
+        fetchScreeners();
         setShowEditModal(false);
         setSelectedScreener(null);
         resetForm();
@@ -168,7 +200,7 @@ const HalalScreenerManagement: React.FC = () => {
         console.log(`Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully`);
         setCopyToast(`✅ Screener ${!screener.isActive ? 'activated' : 'deactivated'} successfully!`);
         setTimeout(() => setCopyToast(null), 3000);
-        fetchScreeners(currentPage);
+        fetchScreeners();
       } else {
         console.error(result.message || 'Failed to update status');
         setCopyToast(`❌ ${result.message || 'Failed to update status'}`);
@@ -192,7 +224,7 @@ const HalalScreenerManagement: React.FC = () => {
         console.log('Halal screener deleted successfully');
         setCopyToast('✅ Halal screener deleted successfully!');
         setTimeout(() => setCopyToast(null), 3000);
-        fetchScreeners(currentPage);
+        fetchScreeners();
         setShowDeleteModal(false);
         setSelectedScreener(null);
       } else {
@@ -309,7 +341,7 @@ const HalalScreenerManagement: React.FC = () => {
     
     const loadInitialData = async () => {
       if (isMounted) {
-        await fetchScreeners(1);
+        await fetchScreeners();
       }
     };
     
@@ -324,7 +356,7 @@ const HalalScreenerManagement: React.FC = () => {
   // Fetch screeners when page changes
   useEffect(() => {
     if (currentPage > 1) { // Only call if page changed from initial
-      fetchScreeners(currentPage);
+      fetchScreeners();
     }
   }, [currentPage]);
 
@@ -390,11 +422,87 @@ const HalalScreenerManagement: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Screeners Table */}
+      {/* Search and Filters */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
+        className={`rounded-lg border ${
+          isDarkMode 
+            ? 'bg-gray-800 border-gray-700' 
+            : 'bg-white border-gray-200'
+        } p-6 mb-6 shadow-sm`}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Search
+            </label>
+            <input
+              type="text"
+              placeholder="Search blockchain, token, or CoinGecko ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={`w-full px-3 py-2 border rounded-lg ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+              } focus:ring-2 focus:ring-teal-500 focus:border-transparent`}
+            />
+          </div>
+          
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Status Filter
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+              className={`w-full px-3 py-2 border rounded-lg ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              } focus:ring-2 focus:ring-teal-500 focus:border-transparent`}
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Compliance Filter
+            </label>
+            <select
+              value={complianceFilter}
+              onChange={(e) => setComplianceFilter(e.target.value as 'all' | 'comfortable' | 'questionable' | 'non-comfortable')}
+              className={`w-full px-3 py-2 border rounded-lg ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              } focus:ring-2 focus:ring-teal-500 focus:border-transparent`}
+            >
+              <option value="all">All Compliance</option>
+              <option value="comfortable">Comfortable</option>
+              <option value="questionable">Questionable</option>
+              <option value="non-comfortable">Non-Comfortable</option>
+            </select>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Screeners Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
         className={`rounded-lg border ${
           isDarkMode 
             ? 'bg-gray-800 border-gray-700' 
@@ -457,8 +565,8 @@ const HalalScreenerManagement: React.FC = () => {
             <tbody className={`${
               isDarkMode ? 'bg-gray-800' : 'bg-white'
             } divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {screeners.length > 0 ? (
-                screeners.map((screener) => (
+              {filteredScreeners.length > 0 ? (
+                filteredScreeners.map((screener) => (
                   <tr key={screener._id}>
                     {/* Blockchain Column */}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -642,7 +750,17 @@ const HalalScreenerManagement: React.FC = () => {
                     <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 0 012 2" />
                     </svg>
-                    <p>No halal screeners found</p>
+                    <p>
+                      {searchTerm || statusFilter !== 'all' || complianceFilter !== 'all' 
+                        ? 'No screeners match your current filters'
+                        : 'No halal screeners found'
+                      }
+                    </p>
+                    {(searchTerm || statusFilter !== 'all' || complianceFilter !== 'all') && (
+                      <p className="text-sm mt-2">
+                        Try adjusting your search or filter criteria
+                      </p>
+                    )}
                   </td>
                 </tr>
               )}
@@ -652,7 +770,7 @@ const HalalScreenerManagement: React.FC = () => {
       </motion.div>
 
       {/* Pagination */}
-      {pagination && pagination.totalPages > 1 && (
+      {totalPages > 1 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -663,14 +781,14 @@ const HalalScreenerManagement: React.FC = () => {
             isDarkMode ? 'text-gray-400' : 'text-gray-600'
           }`}>
             <div>
-              Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-              {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-              {pagination.total} total screeners
+              Showing {startIndex + 1} to{' '}
+              {Math.min(endIndex, totalFiltered)} of{' '}
+              {totalFiltered} filtered screeners
             </div>
             <div className={`text-xs mt-1 ${
               isDarkMode ? 'text-gray-500' : 'text-gray-500'
             }`}>
-              Page {pagination.page} of {pagination.totalPages}
+              Page {currentPage} of {totalPages}
             </div>
           </div>
           
@@ -678,7 +796,7 @@ const HalalScreenerManagement: React.FC = () => {
             {/* Previous Button */}
             <button
               onClick={() => handlePageChange(currentPage - 1)}
-              disabled={!pagination.hasPrev}
+              disabled={currentPage <= 1}
               className={`px-3 py-2 border rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isDarkMode
                   ? 'border-gray-600 text-gray-300 hover:bg-gray-700 disabled:hover:bg-transparent'
@@ -690,8 +808,6 @@ const HalalScreenerManagement: React.FC = () => {
             
             {/* Page numbers */}
             {(() => {
-              const currentPage = pagination.page;
-              const totalPages = pagination.totalPages;
               const delta = 1;
               
               const startPage = Math.max(1, currentPage - delta);
@@ -725,7 +841,7 @@ const HalalScreenerManagement: React.FC = () => {
             {/* Next Button */}
             <button
               onClick={() => handlePageChange(currentPage + 1)}
-              disabled={!pagination.hasNext}
+              disabled={currentPage >= totalPages}
               className={`px-3 py-2 border rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isDarkMode
                   ? 'border-gray-600 text-gray-300 hover:bg-gray-700 disabled:hover:bg-transparent'
